@@ -1,0 +1,6 @@
+{
+  "name": "KeluargaFin - Offline-First Family Finance PWA",
+  "description": "Aplikasi pencatatan keuangan keluarga offline-first dengan multi-device sync, shared workspace, budgeting rollover, guilt-free wallet, dan target bersama.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
