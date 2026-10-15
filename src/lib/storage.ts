@@ -171,9 +171,27 @@ class OfflineStorageEngine {
         window.addEventListener('online', () => {
           this.notify();
           this.triggerSync();
+          const supabase = getSupabaseClient();
+          if (supabase && isSupabaseConfigured()) {
+            supabase.auth.getUser().then(({ data }) => {
+              if (data?.user) {
+                this.pullFromSupabase(supabase, data.user.id);
+              }
+            });
+          }
         });
         window.addEventListener('offline', () => {
           this.notify();
+        });
+        window.addEventListener('focus', () => {
+          const supabase = getSupabaseClient();
+          if (supabase && isSupabaseConfigured() && this.isOnline()) {
+            supabase.auth.getUser().then(({ data }) => {
+              if (data?.user) {
+                this.pullFromSupabase(supabase, data.user.id);
+              }
+            });
+          }
         });
 
         // Check Supabase session if configured
@@ -1671,8 +1689,12 @@ class OfflineStorageEngine {
       // If Supabase is connected, push items to Supabase tables
       const supabase = getSupabaseClient();
       if (supabase && isSupabaseConfigured() && this.isOnline()) {
-        const { data: sessionData } = await supabase.auth.getSession();
-        const userId = sessionData?.session?.user?.id;
+        const { data: userData } = await supabase.auth.getUser();
+        let userId = userData?.user?.id;
+        if (!userId) {
+          const { data: sessionData } = await supabase.auth.getSession();
+          userId = sessionData?.session?.user?.id;
+        }
         if (userId) {
           for (const item of pendingItems) {
             try {
