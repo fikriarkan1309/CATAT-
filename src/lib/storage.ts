@@ -955,7 +955,148 @@ class OfflineStorageEngine {
     this.persist();
     if (this.isOnline()) this.triggerSync();
   }
-public addGoal(input: {
+
+// --- BUDGETS MANAGEMENT ---
+  public addBudget(input: {
+    categoryId: string;
+    accountId?: string;
+    limitAmount: number;
+    duration: BudgetDuration;
+    startDate: string;
+    endDate: string;
+  }): Budget {
+    const now = new Date().toISOString();
+    const id = this.generateUUID();
+    const newBudget: Budget = {
+      id,
+      workspaceId: this.state.accounts[0]?.workspaceId || 'ws-default',
+      categoryId: input.categoryId,
+      accountId: input.accountId || 'all',
+      duration: input.duration || '1_month',
+      startDate: input.startDate,
+      endDate: input.endDate,
+      periodMonth: input.startDate.slice(0, 7),
+      limitAmount: input.limitAmount,
+      rolloverAmount: 0,
+      rolloverAction: 'rollover',
+      updatedAt: now,
+    };
+
+    this.state.budgets = [...this.state.budgets, newBudget];
+
+    this.state.syncQueue.push({
+      id: this.generateUUID(),
+      entityTable: 'budgets',
+      entityId: id,
+      operation: 'INSERT',
+      payload: newBudget,
+      clientTimestamp: now,
+      status: 'pending',
+      retryCount: 0,
+    });
+
+    this.persist();
+    if (this.isOnline()) this.triggerSync();
+    return newBudget;
+  }
+
+  public updateBudget(id: string, updates: Partial<Budget>) {
+    const now = new Date().toISOString();
+    this.state.budgets = this.state.budgets.map((b) =>
+      b.id === id ? { ...b, ...updates, updatedAt: now } : b
+    );
+
+    const updated = this.state.budgets.find((b) => b.id === id);
+    if (updated) {
+      this.state.syncQueue.push({
+        id: this.generateUUID(),
+        entityTable: 'budgets',
+        entityId: id,
+        operation: 'UPDATE',
+        payload: updated,
+        clientTimestamp: now,
+        status: 'pending',
+        retryCount: 0,
+      });
+    }
+
+    this.persist();
+    if (this.isOnline()) this.triggerSync();
+  }
+
+  public deleteBudget(id: string) {
+    const now = new Date().toISOString();
+    this.state.budgets = this.state.budgets.filter((b) => b.id !== id);
+    this.state.syncQueue.push({
+      id: this.generateUUID(),
+      entityTable: 'budgets',
+      entityId: id,
+      operation: 'DELETE',
+      payload: { id, isDeleted: true },
+      clientTimestamp: now,
+      status: 'pending',
+      retryCount: 0,
+    });
+    this.persist();
+    if (this.isOnline()) this.triggerSync();
+  }
+
+  // --- GOALS MUTATIONS ---
+  public depositToGoal(goalId: string, amount: number, sourceAccountId: string) {
+    const goal = this.state.goals.find((g) => g.id === goalId);
+    if (!goal) return;
+
+    this.state.accounts = this.state.accounts.map((acc) => {
+      if (acc.id === sourceAccountId) {
+        return { ...acc, balance: acc.balance - amount, updatedAt: new Date().toISOString() };
+      }
+      return acc;
+    });
+
+    const updatedGoal = {
+      ...goal,
+      currentAmount: goal.currentAmount + amount,
+      isCompleted: goal.currentAmount + amount >= goal.targetAmount,
+      updatedAt: new Date().toISOString(),
+    };
+
+    this.state.goals = this.state.goals.map((g) => (g.id === goalId ? updatedGoal : g));
+
+    const now = new Date().toISOString();
+    const txn: Transaction = {
+      id: this.generateUUID(),
+      workspaceId: this.state.accounts[0]?.workspaceId || 'ws-default',
+      accountId: sourceAccountId,
+      categoryId: 'cat-kebutuhan-pokok',
+      userId: this.state.activeRole === 'husband' ? 'usr-husband-fikri-01' : 'usr-wife-alya-02',
+      amount,
+      type: 'expense',
+      tags: ['Investasi', 'Target Bersama'],
+      notes: `Alokasi Tabungan: ${goal.name}`,
+      transactionDate: now,
+      clientCreatedAt: now,
+      updatedAt: now,
+      version: 1,
+    };
+    this.state.transactions = [txn, ...this.state.transactions];
+
+    this.state.syncQueue.push({
+      id: this.generateUUID(),
+      entityTable: 'goals',
+      entityId: goalId,
+      operation: 'UPDATE',
+      payload: updatedGoal,
+      clientTimestamp: now,
+      status: 'pending',
+      retryCount: 0,
+    });
+
+    this.persist();
+    if (this.isOnline()) {
+      this.triggerSync();
+    }
+  }
+  public addGoal(input: {
     name: string;
     targetAmount: number;
     targetDate: string;
