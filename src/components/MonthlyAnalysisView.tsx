@@ -27,9 +27,16 @@ interface MonthSummaryData {
 
 const BASELINE_MONTHS: MonthSummaryData[] = [];
 
-const BASELINE_OCT_EXPENSE_BREAKDOWN = [];
+interface BreakdownItem {
+  name: string;
+  percentage: number;
+  amount: number;
+  color: string;
+}
 
-const BASELINE_OCT_INCOME_BREAKDOWN = [];
+const BASELINE_OCT_EXPENSE_BREAKDOWN: BreakdownItem[] = [];
+
+const BASELINE_OCT_INCOME_BREAKDOWN: BreakdownItem[] = [];
 
 const MiniListDonut: React.FC<{ income: number; expense: number }> = ({ income, expense }) => {
   const total = income + expense;
