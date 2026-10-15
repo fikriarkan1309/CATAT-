@@ -96,9 +96,9 @@ class OfflineStorageEngine {
             ...this.state,
             ...parsed,
             userAccount: parsed.userAccount || {
-              accountName: 'Keluarga Pratama',
-              email: 'fikriarkan1309@gmail.com',
-              password: 'password123',
+              accountName: '',
+              email: '',
+              password: '',
             },
             isAuthenticated: typeof parsed.isAuthenticated === 'boolean' ? parsed.isAuthenticated : false,
             bills: Array.isArray(parsed.bills) ? parsed.bills : INITIAL_BILLS,

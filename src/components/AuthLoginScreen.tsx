@@ -36,7 +36,7 @@ interface AuthLoginScreenProps {
 export const AuthLoginScreen: React.FC<AuthLoginScreenProps> = ({
   onLogin,
   onSignUp,
-  defaultEmail = 'fikriarkan1309@gmail.com',
+  defaultEmail = '',
   theme,
   onToggleTheme,
   onOpenSupabaseConfig,
@@ -123,17 +123,6 @@ export const AuthLoginScreen: React.FC<AuthLoginScreenProps> = ({
     }
   };
 
-  const handleQuickDemoLogin = async (emailPreset: string) => {
-    setLoginEmail(emailPreset);
-    setLoginPassword('password123');
-    setErrorMsg(null);
-    setIsLoading(true);
-    try {
-      await onLogin(emailPreset, 'password123');
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col justify-between font-sans text-slate-900 dark:text-slate-100 p-4 sm:p-6 transition-colors">
@@ -383,15 +372,8 @@ export const AuthLoginScreen: React.FC<AuthLoginScreenProps> = ({
             </form>
           )}
 
-          {/* Quick Demo Login Option */}
+          {/* Supabase Reset Option (only visible if configured) */}
           <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-2">
-            <button
-              type="button"
-              onClick={() => handleQuickDemoLogin('fikriarkan1309@gmail.com')}
-              className="w-full py-2 px-3 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 text-[11px] font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors flex items-center justify-center gap-2"
-            >
-              <span>Uji Coba Cepat: Masuk sebagai Akun Utama (Fikri Arkan)</span>
-            </button>
             {isSupabaseActive && (
               <button
                 type="button"
