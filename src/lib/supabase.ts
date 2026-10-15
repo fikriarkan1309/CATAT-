@@ -25,14 +25,16 @@ export function getSupabaseConfig(): SupabaseConfig {
     }
   }
 
-  // Fallback to Vite environment variables (tanpa as any yang bikin error build)
-  // Pastikan VITE_SUPABASE_URL dan VITE_SUPABASE_ANON_KEY sudah diisi di Cloudflare Pages
+  // Fallback to Vite environment variables or user provided default credentials
   const envUrl = import.meta.env.VITE_SUPABASE_URL;
   const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
+  const defaultUrl = 'https://zhytgblrjzhfajsbfreh.supabase.co';
+  const defaultKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpoeXRnYmxyanpoZmFqc2JmcmVoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NjcwMzgsImV4cCI6MjEwNzU0MzAzOH0.aEFthPU4-E6W0xsPFFwGtxwTnb95IWzF4cm_gkUFLn4';
+
   return {
-    url: typeof envUrl === 'string' ? envUrl.trim() : '',
-    anonKey: typeof envKey === 'string' ? envKey.trim() : '',
+    url: typeof envUrl === 'string' && envUrl.trim() ? envUrl.trim() : defaultUrl,
+    anonKey: typeof envKey === 'string' && envKey.trim() ? envKey.trim() : defaultKey,
   };
 }
 
