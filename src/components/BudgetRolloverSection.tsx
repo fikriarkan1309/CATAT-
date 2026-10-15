@@ -172,7 +172,7 @@ export const BudgetRolloverSection: React.FC<BudgetRolloverSectionProps> = ({
       </div>
 
       {/* 2. DAFTAR KOTAKAN ANGGARAN */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-2xs divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-2xs divide-y divide-slate-100 dark:divide-slate-800">
         {filteredBudgets.length === 0 ? (
           <div className="p-8 text-center">
             <div className="w-12 h-12 mx-auto mb-3 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 dark:text-slate-500">
@@ -279,9 +279,17 @@ export const BudgetRolloverSection: React.FC<BudgetRolloverSectionProps> = ({
 
                         {openDropdownId === b.id && (
                           <div
-                            className="absolute right-0 top-9 z-30 w-44 bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 py-1.5 text-xs animate-in fade-in"
-                            onMouseLeave={() => setOpenDropdownId(null)}
+                            className="fixed z-50 w-44 bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 py-1.5 text-xs animate-in fade-in"
+                            style={{
+                              top: 'auto',
+                              left: 'auto',
+                              transform: 'translate(-100%, 0.5rem)',
+                            }}
                           >
+                            <div
+                              className="fixed inset-0 z-[-1]"
+                              onClick={() => setOpenDropdownId(null)}
+                            />
                             <button
                               type="button"
                               onClick={() => handleOpenRolloverModal(b)}

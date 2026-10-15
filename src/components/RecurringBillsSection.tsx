@@ -275,7 +275,7 @@ export const RecurringBillsSection: React.FC<RecurringBillsSectionProps> = ({
       </div>
 
       {/* 3. DAFTAR KOTAKAN TAGIHAN (Ramping, Rapi, Sesuai Rekening & Anggaran) */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xs divide-y divide-slate-100 dark:divide-slate-800/80 overflow-hidden">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xs divide-y divide-slate-100 dark:divide-slate-800/80">
         {filteredBills.length === 0 ? (
           <div className="p-8 text-center">
             <div className="w-12 h-12 mx-auto mb-3 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 dark:text-slate-500">

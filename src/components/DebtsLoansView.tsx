@@ -331,7 +331,7 @@ export const DebtsLoansView: React.FC<DebtsLoansViewProps> = ({
       </div>
 
       {/* 3. DAFTAR KOTAKAN HUTANG / PIUTANG (Ramping, Tuntas, Pas di Layar HP) */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xs divide-y divide-slate-100 dark:divide-slate-800/80 overflow-hidden">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xs divide-y divide-slate-100 dark:divide-slate-800/80">
         {currentList.length === 0 ? (
           <div className="p-8 text-center">
             <div className="w-12 h-12 mx-auto mb-3 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 dark:text-slate-500">
@@ -473,9 +473,17 @@ export const DebtsLoansView: React.FC<DebtsLoansViewProps> = ({
 
                       {activeMenuId === item.id && (
                         <div
-                          className="absolute right-0 top-full mt-1 w-44 bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 py-1 z-30 animate-in fade-in zoom-in-95"
-                          onClick={(e) => e.stopPropagation()}
+                          className="fixed z-50 w-44 bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 py-1.5 text-xs animate-in fade-in"
+                          style={{
+                            top: 'auto',
+                            left: 'auto',
+                            transform: 'translate(-100%, 0.5rem)',
+                          }}
                         >
+                          <div
+                            className="fixed inset-0 z-[-1]"
+                            onClick={() => setActiveMenuId(null)}
+                          />
                           {!isSettled && (
                             <button
                               type="button"

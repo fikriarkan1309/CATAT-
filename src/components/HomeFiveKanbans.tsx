@@ -133,9 +133,17 @@ export const HomeFiveKanbans: React.FC<HomeFiveKanbansProps> = ({
   // Active accounts
   const activeAccounts = accounts.filter((a) => !a.isArchived);
 
-  // Month computations (Oktober 2026 vs September 2026)
-  const currentMonthTxns = transactions.filter((t) => t.transactionDate.startsWith('2026-10'));
-  const lastMonthTxns = transactions.filter((t) => t.transactionDate.startsWith('2026-09'));
+  // Dynamic Month computations
+  const now = new Date();
+  const curMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const curMonthName = now.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
+
+  const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const prevMonthKey = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
+  const prevMonthName = prevDate.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
+
+  const currentMonthTxns = transactions.filter((t) => t.transactionDate.startsWith(curMonthKey));
+  const lastMonthTxns = transactions.filter((t) => t.transactionDate.startsWith(prevMonthKey));
 
   const curIncome = currentMonthTxns
     .filter((t) => t.type === 'income')
@@ -147,23 +155,28 @@ export const HomeFiveKanbans: React.FC<HomeFiveKanbansProps> = ({
 
   const prevIncome = lastMonthTxns
     .filter((t) => t.type === 'income')
-    .reduce((sum, t) => sum + t.amount, 0) || 25000000;
+    .reduce((sum, t) => sum + t.amount, 0);
   const prevExpense = lastMonthTxns
     .filter((t) => t.type === 'expense')
-    .reduce((sum, t) => sum + t.amount, 0) || 11154000;
+    .reduce((sum, t) => sum + t.amount, 0);
   const prevTotal = prevIncome - prevExpense;
 
-  // 7 Days Bar Chart Data matching reference style
-  const days = [
-    { label: '07/10', total: 567000 },
-    { label: '08/10', total: 0 },
-    { label: '09/10', total: 0 },
-    { label: '10/10', total: 173000 },
-    { label: '11/10', total: 200000 },
-    { label: '12/10', total: 180000 },
-    { label: '13/10', total: 0 },
-  ];
-  const maxDayTotal = Math.max(...days.map((d) => d.total), 600000);
+  // 7 Days Bar Chart Data dynamic
+  const todayDate = new Date();
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(todayDate);
+    d.setDate(todayDate.getDate() - (6 - i));
+    const dateString = d.toISOString().split('T')[0];
+    const label = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const dayTransactions = transactions.filter((t) => {
+      if (t.type !== 'expense') return false;
+      const tDate = t.transactionDate.split('T')[0];
+      return tDate === dateString;
+    });
+    const total = dayTransactions.reduce((acc, t) => acc + t.amount, 0);
+    return { label, total, dateString };
+  });
+  const maxDayTotal = Math.max(...days.map((d) => d.total), 500000);
 
   return (
     <div className="w-full flex flex-col gap-2.5 max-w-[1400px] mx-auto">
@@ -199,11 +212,11 @@ export const HomeFiveKanbans: React.FC<HomeFiveKanbansProps> = ({
 
           {/* Dual Columns: Bulan Ini vs Bulan Lalu */}
           <div className="grid grid-cols-2 gap-2 sm:gap-3 pt-2">
-            {/* Kolom 1: Oktober 2026 (Bulan Ini) */}
+            {/* Kolom 1: Bulan Ini */}
             <div className="flex flex-col min-w-0">
               <div className="flex items-center justify-between mb-1 min-w-0">
-                <span className="text-[10px] sm:text-[11px] font-bold text-slate-800 dark:text-slate-100 truncate">
-                  Oktober 2026
+                <span className="text-[10px] sm:text-[11px] font-bold text-slate-800 dark:text-slate-100 truncate capitalize">
+                  {curMonthName}
                 </span>
                 <span className="text-[9px] font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200/60 dark:border-emerald-800/60 px-1 py-0.5 rounded leading-none shrink-0">
                   Bulan ini
@@ -212,7 +225,7 @@ export const HomeFiveKanbans: React.FC<HomeFiveKanbansProps> = ({
 
               <div
                 className="flex items-center gap-2 sm:gap-2.5 bg-slate-50/80 dark:bg-slate-800/60 p-2 sm:p-2.5 rounded-xl border border-slate-100/90 dark:border-slate-700/60 flex-1 min-w-0 group-hover:bg-slate-100/60 dark:group-hover:bg-slate-800 transition-colors"
-                title={`Oktober 2026\nPemasukan: ${formatRupiah(curIncome)}\nPengeluaran: ${formatRupiah(curExpense)}\nTotal: ${formatRupiah(curTotal)}`}
+                title={`${curMonthName}\nPemasukan: ${formatRupiah(curIncome)}\nPengeluaran: ${formatRupiah(curExpense)}\nTotal: ${formatRupiah(curTotal)}`}
               >
                 {/* Diagram Donat Mini Arc */}
                 <DonutArc income={curIncome} expense={curExpense} />
@@ -261,11 +274,11 @@ export const HomeFiveKanbans: React.FC<HomeFiveKanbansProps> = ({
               </div>
             </div>
 
-            {/* Kolom 2: September 2026 (Bulan Lalu) */}
+            {/* Kolom 2: Bulan Lalu */}
             <div className="flex flex-col min-w-0">
               <div className="flex items-center justify-between mb-1 min-w-0">
-                <span className="text-[10px] sm:text-[11px] font-bold text-slate-600 dark:text-slate-300 truncate">
-                  September 2026
+                <span className="text-[10px] sm:text-[11px] font-bold text-slate-600 dark:text-slate-300 truncate capitalize">
+                  {prevMonthName}
                 </span>
                 <span className="text-[9px] font-medium text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/60 px-1 py-0.5 rounded leading-none shrink-0">
                   Bulan lalu
