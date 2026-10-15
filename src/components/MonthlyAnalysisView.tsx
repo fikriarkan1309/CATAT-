@@ -92,7 +92,9 @@ export const MonthlyAnalysisView: React.FC<MonthlyAnalysisViewProps> = ({
   const [selectedMonthKey, setSelectedMonthKey] = useState<string>('2026-10');
   const [selectedFlowType, setSelectedFlowType] = useState<'expense' | 'income'>('expense');
   const [isChoiceModalOpen, setIsChoiceModalOpen] = useState(false);
-  const [targetMonthForChoice, setTargetMonthForChoice] = useState<MonthSummaryData>(BASELINE_MONTHS[0]);
+  const [targetMonthForChoice, setTargetMonthForChoice] = useState<MonthSummaryData>(
+    BASELINE_MONTHS[0] || { key: '2026-10', label: 'Bulan Ini', income: 0, expense: 0, total: 0 }
+  );
   const [hoveredSlice, setHoveredSlice] = useState<number | null>(null);
   const [searchKeyword, setSearchKeyword] = useState('');
 
@@ -381,14 +383,19 @@ export const MonthlyAnalysisView: React.FC<MonthlyAnalysisViewProps> = ({
           </div>
 
           {/* List of Months */}
-          <div className="divide-y divide-slate-100 dark:divide-slate-800">
-            {filteredMonthsList.map((m) => (
-              <div
-                key={m.key}
-                onClick={() => handleMonthClick(m)}
-                className="p-3.5 sm:p-4 hover:bg-slate-50/90 dark:hover:bg-slate-800/60 transition-all cursor-pointer group flex flex-col justify-between"
-                title={`Klik untuk membuka pilihan Pemasukan atau Pengeluaran bulan ${m.label}`}
-              >
+          {filteredMonthsList.length === 0 ? (
+            <div className="p-10 text-center text-slate-500 dark:text-slate-400 text-xs">
+              Belum ada data transaksi tercatat. Silakan catat transaksi baru untuk melihat ringkasan bulanan.
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-100 dark:divide-slate-800">
+              {filteredMonthsList.map((m) => (
+                <div
+                  key={m.key}
+                  onClick={() => handleMonthClick(m)}
+                  className="p-3.5 sm:p-4 hover:bg-slate-50/90 dark:hover:bg-slate-800/60 transition-all cursor-pointer group flex flex-col justify-between"
+                  title={`Klik untuk membuka pilihan Pemasukan atau Pengeluaran bulan ${m.label}`}
+                >
                 {/* Month Title */}
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
@@ -434,6 +441,7 @@ export const MonthlyAnalysisView: React.FC<MonthlyAnalysisViewProps> = ({
               </div>
             ))}
           </div>
+        )}
         </div>
       )}
 
