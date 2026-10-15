@@ -10,10 +10,8 @@ import {
   LogOut,
   Edit2,
   Check,
-  Database,
 } from 'lucide-react';
 import { RegisteredUser } from '../lib/storage';
-import { isSupabaseConfigured } from '../lib/supabase';
 
 interface UserAccountModalProps {
   isOpen: boolean;
@@ -23,7 +21,6 @@ interface UserAccountModalProps {
   isOnline: boolean;
   pendingSyncCount: number;
   onLogout?: () => void;
-  onOpenSupabaseModal?: () => void;
 }
 
 export const UserAccountModal: React.FC<UserAccountModalProps> = ({
@@ -33,7 +30,6 @@ export const UserAccountModal: React.FC<UserAccountModalProps> = ({
   onUpdateAccountName,
   isOnline,
   onLogout,
-  onOpenSupabaseModal,
 }) => {
   const [isEditingName, setIsEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(userAccount?.accountName || 'Keluarga Pratama');
@@ -252,46 +248,6 @@ export const UserAccountModal: React.FC<UserAccountModalProps> = ({
                   </div>
                 </div>
                 <span className="text-[10px] text-slate-400 font-medium">Siap</span>
-              </div>
-
-              {/* Supabase Database Connection Status */}
-              <div className="flex items-center justify-between p-2.5 rounded-xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/40 text-xs">
-                <div className="flex items-center gap-2.5">
-                  <Database className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                  <div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-semibold text-slate-800 dark:text-slate-200 block">
-                        Cloud Supabase Database
-                      </span>
-                      <span
-                        className={`text-[9px] font-bold px-1.5 py-0.2 rounded-md ${
-                          isSupabaseConfigured()
-                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300'
-                            : 'bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
-                        }`}
-                      >
-                        {isSupabaseConfigured() ? 'Aktif' : 'Lokal/Offline'}
-                      </span>
-                    </div>
-                    <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
-                      {isSupabaseConfigured()
-                        ? 'Auth login & seluruh data tersimpan di Supabase'
-                        : 'Belum dihubungkan ke Supabase (Data di memori HP)'}
-                    </span>
-                  </div>
-                </div>
-                {onOpenSupabaseModal && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onClose();
-                      onOpenSupabaseModal();
-                    }}
-                    className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 hover:underline px-2 py-1 rounded-lg hover:bg-emerald-100/50 dark:hover:bg-emerald-950/40"
-                  >
-                    {isSupabaseConfigured() ? 'Kelola' : 'Hubungkan'}
-                  </button>
-                )}
               </div>
             </div>
           </div>

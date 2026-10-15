@@ -71,16 +71,16 @@ class OfflineStorageEngine {
       guiltFree: INITIAL_GUILT_FREE,
       activeRole: 'husband',
       userAccount: {
-        accountName: 'Keluarga Pratama',
-        email: 'fikriarkan1309@gmail.com',
-        password: 'password123',
-        createdAt: '2026-01-01T00:00:00.000Z',
+        accountName: '',
+        email: '',
+        password: '',
+        createdAt: '',
       },
       isAuthenticated: false,
-      currentUserEmail: 'fikriarkan1309@gmail.com',
+      currentUserEmail: '',
       isSimulatedOffline: false,
       isLocked: false,
-      pin: '1234',
+      pin: '',
     };
 
     this.init();
@@ -138,6 +138,13 @@ class OfflineStorageEngine {
       }
 
       if (typeof window !== 'undefined') {
+        // Temporary fix: Clear invalid Supabase config on init
+        const stored = localStorage.getItem('keluarga_fin_supabase_config');
+        if (stored && stored.includes('/rest/v1')) {
+          localStorage.removeItem('keluarga_fin_supabase_config');
+          window.location.reload();
+        }
+
         window.addEventListener('online', () => {
           this.notify();
           this.triggerSync();
@@ -1737,16 +1744,16 @@ class OfflineStorageEngine {
       guiltFree: INITIAL_GUILT_FREE,
       activeRole: 'husband',
       userAccount: {
-        accountName: 'Keluarga Pratama',
-        email: 'fikriarkan1309@gmail.com',
-        password: 'password123',
-        createdAt: '2026-01-01T00:00:00.000Z',
+        accountName: '',
+        email: '',
+        password: '',
+        createdAt: '',
       },
       isAuthenticated: false,
-      currentUserEmail: 'fikriarkan1309@gmail.com',
+      currentUserEmail: '',
       isSimulatedOffline: false,
       isLocked: false,
-      pin: '1234',
+      pin: '',
     };
     this.persist();
   }

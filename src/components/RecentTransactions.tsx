@@ -410,9 +410,12 @@ export const RecentTransactions: React.FC<RecentTransactionsProps> = ({
                                 }}
                               />
                               <div
-                                className={`absolute right-0 ${
-                                  isLastItemInAll ? 'bottom-9' : 'top-9'
-                                } z-50 w-44 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 py-1.5 text-xs animate-in fade-in zoom-in-95 duration-100`}
+                                className="fixed z-50 w-44 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 py-1.5 text-xs animate-in fade-in zoom-in-95 duration-100"
+                                style={{
+                                  top: 'auto',
+                                  left: 'auto',
+                                  transform: 'translate(-100%, 0.5rem)',
+                                }}
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 <button

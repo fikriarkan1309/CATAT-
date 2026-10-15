@@ -238,9 +238,17 @@ export const AccountCards: React.FC<AccountCardsProps> = ({
 
                     {openDropdownId === acc.id && (
                       <div
-                        className="absolute right-0 top-9 z-30 w-44 bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 py-1.5 text-xs animate-in fade-in"
-                        onMouseLeave={() => setOpenDropdownId(null)}
+                        className="fixed z-50 w-44 bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 py-1.5 text-xs animate-in fade-in"
+                        style={{
+                          top: 'auto',
+                          left: 'auto',
+                          transform: 'translate(-100%, 0.5rem)',
+                        }}
                       >
+                        <div
+                          className="fixed inset-0 z-[-1]"
+                          onClick={() => setOpenDropdownId(null)}
+                        />
                         <button
                           onClick={() => {
                             setOpenDropdownId(null);

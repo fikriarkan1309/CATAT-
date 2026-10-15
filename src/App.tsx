@@ -23,7 +23,6 @@ import { UserAccountModal } from './components/UserAccountModal';
 import { RecentTransactions } from './components/RecentTransactions';
 import { MonthlyAnalysisView } from './components/MonthlyAnalysisView';
 import { AuthLoginScreen } from './components/AuthLoginScreen';
-import { SupabaseConfigModal } from './components/SupabaseConfigModal';
 import { Account, Budget, Transaction, TransactionType } from './types/finance';
 
 export default function App() {
@@ -93,7 +92,6 @@ export default function App() {
   const [isSettingsMenuOpen, setIsSettingsMenuOpen] = useState(false);
   const [isDataModalOpen, setIsDataModalOpen] = useState(false);
   const [isUserAccountModalOpen, setIsUserAccountModalOpen] = useState(false);
-  const [isSupabaseModalOpen, setIsSupabaseModalOpen] = useState(false);
 
   // Transaction Modal State
   const [isTxnModalOpen, setIsTxnModalOpen] = useState(false);
@@ -202,21 +200,13 @@ export default function App() {
 
   if (!isAuthenticated) {
     return (
-      <>
-        <AuthLoginScreen
-          onLogin={(em, pw) => login(em, pw)}
-          onSignUp={(input) => signUp(input)}
-          defaultEmail={userAccount?.email || 'fikriarkan1309@gmail.com'}
-          theme={theme}
-          onToggleTheme={toggleTheme}
-          onOpenSupabaseConfig={() => setIsSupabaseModalOpen(true)}
-        />
-        <SupabaseConfigModal
-          isOpen={isSupabaseModalOpen}
-          onClose={() => setIsSupabaseModalOpen(false)}
-          onConnectionChange={() => triggerSync()}
-        />
-      </>
+      <AuthLoginScreen
+        onLogin={(em, pw) => login(em, pw)}
+        onSignUp={(input) => signUp(input)}
+        defaultEmail={userAccount?.email || 'fikriarkan1309@gmail.com'}
+        theme={theme}
+        onToggleTheme={toggleTheme}
+      />
     );
   }
 
@@ -513,7 +503,6 @@ export default function App() {
         onOpenDataModal={() => setIsDataModalOpen(true)}
         onOpenCategories={() => setCurrentTab('categories')}
         onOpenAccountModal={() => setIsUserAccountModalOpen(true)}
-        onOpenSupabaseModal={() => setIsSupabaseModalOpen(true)}
         theme={theme}
         onToggleTheme={toggleTheme}
         onLogout={logout}
@@ -540,14 +529,6 @@ export default function App() {
         isOnline={isOnline}
         pendingSyncCount={pendingSyncCount}
         onLogout={logout}
-        onOpenSupabaseModal={() => setIsSupabaseModalOpen(true)}
-      />
-
-      {/* Database Supabase Configuration Modal */}
-      <SupabaseConfigModal
-        isOpen={isSupabaseModalOpen}
-        onClose={() => setIsSupabaseModalOpen(false)}
-        onConnectionChange={() => triggerSync()}
       />
 
       {/* Sync Queue Inspector Modal */}

@@ -73,7 +73,9 @@ export function isSupabaseConfigured(): boolean {
 export function saveSupabaseConfig(url: string, anonKey: string): boolean {
   if (typeof window === 'undefined') return false;
   try {
-    const cleanUrl = url.trim();
+    let cleanUrl = url.trim();
+    // Remove /rest/v1/ or any trailing slash if present
+    cleanUrl = cleanUrl.replace(/\/rest\/v1\/?$/, '').replace(/\/+$/, '');
     const cleanKey = anonKey.trim();
     if (!cleanUrl || !cleanKey) {
       localStorage.removeItem(SUPABASE_CONFIG_KEY);

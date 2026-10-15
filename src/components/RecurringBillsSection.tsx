@@ -391,9 +391,17 @@ export const RecurringBillsSection: React.FC<RecurringBillsSectionProps> = ({
 
                     {activeMenuId === bill.id && (
                       <div
-                        className="absolute right-0 top-full mt-1 w-44 bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 py-1 z-30 animate-in fade-in zoom-in-95"
-                        onClick={(e) => e.stopPropagation()}
+                        className="fixed z-50 w-44 bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 py-1.5 text-xs animate-in fade-in"
+                        style={{
+                          top: 'auto',
+                          left: 'auto',
+                          transform: 'translate(-100%, 0.5rem)',
+                        }}
                       >
+                        <div
+                          className="fixed inset-0 z-[-1]"
+                          onClick={() => setActiveMenuId(null)}
+                        />
                         {!isPaid ? (
                           <button
                             type="button"
