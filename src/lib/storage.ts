@@ -882,6 +882,7 @@ class OfflineStorageEngine {
     color: string;
     type: 'expense' | 'income';
   }): Category {
+    const now = new Date().toISOString();
     const id = this.generateUUID();
     const newCat: Category = {
       id,
@@ -895,147 +896,66 @@ class OfflineStorageEngine {
     };
 
     this.state.categories = [...this.state.categories, newCat];
+
+    this.state.syncQueue.push({
+      id: this.generateUUID(),
+      entityTable: 'categories',
+      entityId: id,
+      operation: 'INSERT',
+      payload: newCat,
+      clientTimestamp: now,
+      status: 'pending',
+      retryCount: 0,
+    });
+
     this.persist();
+    if (this.isOnline()) this.triggerSync();
     return newCat;
   }
 
   public updateCategory(id: string, updates: Partial<Category>) {
+    const now = new Date().toISOString();
     this.state.categories = this.state.categories.map((c) =>
       c.id === id ? { ...c, ...updates } : c
     );
+
+    const updated = this.state.categories.find((c) => c.id === id);
+    if (updated) {
+      this.state.syncQueue.push({
+        id: this.generateUUID(),
+        entityTable: 'categories',
+        entityId: id,
+        operation: 'UPDATE',
+        payload: updated,
+        clientTimestamp: now,
+        status: 'pending',
+        retryCount: 0,
+      });
+    }
+
     this.persist();
+    if (this.isOnline()) this.triggerSync();
   }
 
   public deleteCategory(id: string) {
+    const now = new Date().toISOString();
     this.state.categories = this.state.categories.filter((c) => c.id !== id && c.parentId !== id);
-    this.persist();
-  }
-
-  // --- BUDGETS MANAGEMENT ---
-  public addBudget(input: {
-    categoryId: string;
-    accountId?: string;
-    limitAmount: number;
-    duration: BudgetDuration;
-    startDate: string;
-    endDate: string;
-  }): Budget {
-    const now = new Date().toISOString();
-    const id = this.generateUUID();
-    const newBudget: Budget = {
-      id,
-      workspaceId: this.state.accounts[0]?.workspaceId || 'ws-default',
-      categoryId: input.categoryId,
-      accountId: input.accountId || 'all',
-      duration: input.duration || '1_month',
-      startDate: input.startDate,
-      endDate: input.endDate,
-      periodMonth: input.startDate.slice(0, 7),
-      limitAmount: input.limitAmount,
-      rolloverAmount: 0,
-      rolloverAction: 'rollover',
-      updatedAt: now,
-    };
-
-    this.state.budgets = [...this.state.budgets, newBudget];
 
     this.state.syncQueue.push({
       id: this.generateUUID(),
-      entityTable: 'budgets',
-      entityId: id,
-      operation: 'INSERT',
-      payload: newBudget,
-      clientTimestamp: now,
-      status: 'pending',
-      retryCount: 0,
-    });
-
-    this.persist();
-    if (this.isOnline()) this.triggerSync();
-    return newBudget;
-  }
-
-  public updateBudget(id: string, updates: Partial<Budget>) {
-    const now = new Date().toISOString();
-    this.state.budgets = this.state.budgets.map((b) =>
-      b.id === id ? { ...b, ...updates, updatedAt: now } : b
-    );
-    this.persist();
-  }
-
-  public deleteBudget(id: string) {
-    this.state.budgets = this.state.budgets.filter((b) => b.id !== id);
-    this.state.syncQueue.push({
-      id: this.generateUUID(),
-      entityTable: 'budgets',
+      entityTable: 'categories',
       entityId: id,
       operation: 'DELETE',
       payload: { id, isDeleted: true },
-      clientTimestamp: new Date().toISOString(),
-      status: 'pending',
-      retryCount: 0,
-    });
-    this.persist();
-    if (this.isOnline()) this.triggerSync();
-  }
-
-  // --- GOALS MUTATIONS ---
-  public depositToGoal(goalId: string, amount: number, sourceAccountId: string) {
-    const goal = this.state.goals.find((g) => g.id === goalId);
-    if (!goal) return;
-
-    this.state.accounts = this.state.accounts.map((acc) => {
-      if (acc.id === sourceAccountId) {
-        return { ...acc, balance: acc.balance - amount, updatedAt: new Date().toISOString() };
-      }
-      return acc;
-    });
-
-    const updatedGoal = {
-      ...goal,
-      currentAmount: goal.currentAmount + amount,
-      isCompleted: goal.currentAmount + amount >= goal.targetAmount,
-      updatedAt: new Date().toISOString(),
-    };
-
-    this.state.goals = this.state.goals.map((g) => (g.id === goalId ? updatedGoal : g));
-
-    const now = new Date().toISOString();
-    const txn: Transaction = {
-      id: this.generateUUID(),
-      workspaceId: this.state.accounts[0]?.workspaceId || 'ws-default',
-      accountId: sourceAccountId,
-      categoryId: 'cat-kebutuhan-pokok',
-      userId: this.state.activeRole === 'husband' ? 'usr-husband-fikri-01' : 'usr-wife-alya-02',
-      amount,
-      type: 'expense',
-      tags: ['Investasi', 'Target Bersama'],
-      notes: `Alokasi Tabungan: ${goal.name}`,
-      transactionDate: now,
-      clientCreatedAt: now,
-      updatedAt: now,
-      version: 1,
-    };
-    this.state.transactions = [txn, ...this.state.transactions];
-
-    this.state.syncQueue.push({
-      id: this.generateUUID(),
-      entityTable: 'goals',
-      entityId: goalId,
-      operation: 'UPDATE',
-      payload: updatedGoal,
       clientTimestamp: now,
       status: 'pending',
       retryCount: 0,
     });
 
     this.persist();
-    if (this.isOnline()) {
-      this.triggerSync();
-    }
+    if (this.isOnline()) this.triggerSync();
   }
-
-  public addGoal(input: {
+public addGoal(input: {
     name: string;
     targetAmount: number;
     targetDate: string;
@@ -1061,26 +981,70 @@ class OfflineStorageEngine {
     };
 
     this.state.goals = [...this.state.goals, newGoal];
+
+    this.state.syncQueue.push({
+      id: this.generateUUID(),
+      entityTable: 'goals',
+      entityId: id,
+      operation: 'INSERT',
+      payload: newGoal,
+      clientTimestamp: now,
+      status: 'pending',
+      retryCount: 0,
+    });
+
     this.persist();
+    if (this.isOnline()) this.triggerSync();
     return newGoal;
   }
 
   public updateGoal(id: string, updates: Partial<SharedGoal>) {
     const now = new Date().toISOString();
+    let updatedGoal: SharedGoal | undefined;
     this.state.goals = this.state.goals.map((g) => {
       if (g.id === id) {
         const updated = { ...g, ...updates, updatedAt: now };
         updated.isCompleted = updated.currentAmount >= updated.targetAmount;
+        updatedGoal = updated;
         return updated;
       }
       return g;
     });
+
+    if (updatedGoal) {
+      this.state.syncQueue.push({
+        id: this.generateUUID(),
+        entityTable: 'goals',
+        entityId: id,
+        operation: 'UPDATE',
+        payload: updatedGoal,
+        clientTimestamp: now,
+        status: 'pending',
+        retryCount: 0,
+      });
+    }
+
     this.persist();
+    if (this.isOnline()) this.triggerSync();
   }
 
   public deleteGoal(id: string) {
+    const now = new Date().toISOString();
     this.state.goals = this.state.goals.filter((g) => g.id !== id);
+
+    this.state.syncQueue.push({
+      id: this.generateUUID(),
+      entityTable: 'goals',
+      entityId: id,
+      operation: 'DELETE',
+      payload: { id, isDeleted: true },
+      clientTimestamp: now,
+      status: 'pending',
+      retryCount: 0,
+    });
+
     this.persist();
+    if (this.isOnline()) this.triggerSync();
   }
 
   public withdrawFromGoal(goalId: string, amount: number, targetAccountId: string, notes?: string) {
@@ -1125,6 +1089,7 @@ class OfflineStorageEngine {
   }
 
   // --- RECURRING BILLS MANAGEMENT ---
+  // --- RECURRING BILLS MANAGEMENT ---
   public addBill(input: {
     name: string;
     amount: number;
@@ -1152,21 +1117,68 @@ class OfflineStorageEngine {
     };
 
     this.state.bills = [...this.state.bills, newBill];
+
+    this.state.syncQueue.push({
+      id: this.generateUUID(),
+      entityTable: 'bills',
+      entityId: id,
+      operation: 'INSERT',
+      payload: newBill,
+      clientTimestamp: now,
+      status: 'pending',
+      retryCount: 0,
+    });
+
     this.persist();
+    if (this.isOnline()) this.triggerSync();
     return newBill;
   }
 
   public updateBill(id: string, updates: Partial<RecurringBill>) {
     const now = new Date().toISOString();
-    this.state.bills = this.state.bills.map((b) =>
-      b.id === id ? { ...b, ...updates, updatedAt: now } : b
-    );
+    let updatedBill: RecurringBill | undefined;
+    this.state.bills = this.state.bills.map((b) => {
+      if (b.id === id) {
+        updatedBill = { ...b, ...updates, updatedAt: now };
+        return updatedBill;
+      }
+      return b;
+    });
+
+    if (updatedBill) {
+      this.state.syncQueue.push({
+        id: this.generateUUID(),
+        entityTable: 'bills',
+        entityId: id,
+        operation: 'UPDATE',
+        payload: updatedBill,
+        clientTimestamp: now,
+        status: 'pending',
+        retryCount: 0,
+      });
+    }
+
     this.persist();
+    if (this.isOnline()) this.triggerSync();
   }
 
   public deleteBill(id: string) {
+    const now = new Date().toISOString();
     this.state.bills = this.state.bills.filter((b) => b.id !== id);
+
+    this.state.syncQueue.push({
+      id: this.generateUUID(),
+      entityTable: 'bills',
+      entityId: id,
+      operation: 'DELETE',
+      payload: { id, isDeleted: true },
+      clientTimestamp: now,
+      status: 'pending',
+      retryCount: 0,
+    });
+
     this.persist();
+    if (this.isOnline()) this.triggerSync();
   }
 
   public payBill(billId: string, accountId: string, customNotes?: string) {
@@ -1177,17 +1189,17 @@ class OfflineStorageEngine {
     if (!bill.paidMonths.includes(currentMonth)) {
       bill.paidMonths.push(currentMonth);
     }
-    bill.lastPaidDate = new Date().toISOString();
-    bill.updatedAt = new Date().toISOString();
+    const now = new Date().toISOString();
+    bill.lastPaidDate = now;
+    bill.updatedAt = now;
 
     this.state.accounts = this.state.accounts.map((acc) => {
       if (acc.id === accountId) {
-        return { ...acc, balance: acc.balance - bill.amount, updatedAt: new Date().toISOString() };
+        return { ...acc, balance: acc.balance - bill.amount, updatedAt: now };
       }
       return acc;
     });
 
-    const now = new Date().toISOString();
     const txn: Transaction = {
       id: this.generateUUID(),
       workspaceId: this.state.accounts[0]?.workspaceId || 'ws-default',
@@ -1206,7 +1218,19 @@ class OfflineStorageEngine {
     };
     this.state.transactions = [txn, ...this.state.transactions];
 
+    this.state.syncQueue.push({
+      id: this.generateUUID(),
+      entityTable: 'bills',
+      entityId: billId,
+      operation: 'UPDATE',
+      payload: bill,
+      clientTimestamp: now,
+      status: 'pending',
+      retryCount: 0,
+    });
+
     this.persist();
+    if (this.isOnline()) this.triggerSync();
   }
 
   public unpayBill(billId: string, monthStr?: string) {
@@ -1224,6 +1248,7 @@ class OfflineStorageEngine {
     this.persist();
   }
 
+  // --- DEBTS & LOANS MANAGEMENT ---
   // --- DEBTS & LOANS MANAGEMENT ---
   public addDebt(input: {
     type: 'debt' | 'receivable';
@@ -1269,26 +1294,70 @@ class OfflineStorageEngine {
     };
 
     this.state.debts = [...this.state.debts, newDebt];
+
+    this.state.syncQueue.push({
+      id: this.generateUUID(),
+      entityTable: 'debts',
+      entityId: id,
+      operation: 'INSERT',
+      payload: newDebt,
+      clientTimestamp: now,
+      status: 'pending',
+      retryCount: 0,
+    });
+
     this.persist();
+    if (this.isOnline()) this.triggerSync();
     return newDebt;
   }
 
   public updateDebt(id: string, updates: Partial<DebtItem>) {
     const now = new Date().toISOString();
+    let updatedDebt: DebtItem | undefined;
     this.state.debts = this.state.debts.map((d) => {
       if (d.id === id) {
         const updated = { ...d, ...updates, updatedAt: now };
         updated.status = updated.paidAmount >= updated.totalAmount ? 'settled' : 'active';
+        updatedDebt = updated;
         return updated;
       }
       return d;
     });
+
+    if (updatedDebt) {
+      this.state.syncQueue.push({
+        id: this.generateUUID(),
+        entityTable: 'debts',
+        entityId: id,
+        operation: 'UPDATE',
+        payload: updatedDebt,
+        clientTimestamp: now,
+        status: 'pending',
+        retryCount: 0,
+      });
+    }
+
     this.persist();
+    if (this.isOnline()) this.triggerSync();
   }
 
   public deleteDebt(id: string) {
+    const now = new Date().toISOString();
     this.state.debts = this.state.debts.filter((d) => d.id !== id);
+
+    this.state.syncQueue.push({
+      id: this.generateUUID(),
+      entityTable: 'debts',
+      entityId: id,
+      operation: 'DELETE',
+      payload: { id, isDeleted: true },
+      clientTimestamp: now,
+      status: 'pending',
+      retryCount: 0,
+    });
+
     this.persist();
+    if (this.isOnline()) this.triggerSync();
   }
 
   public recordDebtPayment(
@@ -1312,17 +1381,17 @@ class OfflineStorageEngine {
 
     const newPaidTotal = debt.paidAmount + paymentAmount;
     const isSettled = newPaidTotal >= debt.totalAmount;
+    const now = new Date().toISOString();
 
     if (payment.accountId) {
       this.state.accounts = this.state.accounts.map((acc) => {
         if (acc.id === payment.accountId) {
           const delta = debt.type === 'debt' ? -paymentAmount : paymentAmount;
-          return { ...acc, balance: acc.balance + delta, updatedAt: new Date().toISOString() };
+          return { ...acc, balance: acc.balance + delta, updatedAt: now };
         }
         return acc;
       });
 
-      const now = new Date().toISOString();
       const isExpense = debt.type === 'debt';
       const txn: Transaction = {
         id: this.generateUUID(),
@@ -1344,20 +1413,36 @@ class OfflineStorageEngine {
       this.state.transactions = [txn, ...this.state.transactions];
     }
 
+    let updatedDebt: DebtItem | undefined;
     this.state.debts = this.state.debts.map((d) => {
       if (d.id === debtId) {
-        return {
+        updatedDebt = {
           ...d,
           paidAmount: newPaidTotal,
           status: isSettled ? 'settled' : 'active',
           payments: [newPayment, ...d.payments],
-          updatedAt: new Date().toISOString(),
+          updatedAt: now,
         };
+        return updatedDebt;
       }
       return d;
     });
 
+    if (updatedDebt) {
+      this.state.syncQueue.push({
+        id: this.generateUUID(),
+        entityTable: 'debts',
+        entityId: debtId,
+        operation: 'UPDATE',
+        payload: updatedDebt,
+        clientTimestamp: now,
+        status: 'pending',
+        retryCount: 0,
+      });
+    }
+
     this.persist();
+    if (this.isOnline()) this.triggerSync();
   }
 
   // --- DATA BACKUP, RESTORE & EXPORT ---
