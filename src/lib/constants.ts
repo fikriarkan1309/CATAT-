@@ -11,26 +11,7 @@ export const HUSBAND_USER: UserProfile | null = null;
 export const WIFE_USER: UserProfile | null = null;
 
 export const INITIAL_ACCOUNTS: Account[] = [];
-export const INITIAL_CATEGORIES: Category[] = [
-  {
-    id: 'cat-kebutuhan-pokok',
-    workspaceId: CURRENT_WORKSPACE.id,
-    name: 'Kebutuhan Rumah Tangga',
-    icon: 'Home',
-    color: '#3B82F6',
-    type: 'expense',
-    isSystem: true,
-  },
-  {
-    id: 'cat-gaji-utama',
-    workspaceId: CURRENT_WORKSPACE.id,
-    name: 'Gaji Bulanan',
-    icon: 'Briefcase',
-    color: '#10B981',
-    type: 'income',
-    isSystem: true,
-  },
-];
+export const INITIAL_CATEGORIES: Category[] = [];
 
 export const AVAILABLE_TAGS: string[] = [];
 

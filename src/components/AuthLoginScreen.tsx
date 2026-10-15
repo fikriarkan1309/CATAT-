@@ -45,8 +45,8 @@ export const AuthLoginScreen: React.FC<AuthLoginScreenProps> = ({
   const [mode, setMode] = useState<'login' | 'signup'>('login');
 
   // Login form state
-  const [loginEmail, setLoginEmail] = useState(defaultEmail);
-  const [loginPassword, setLoginPassword] = useState('password123');
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
   const [showLoginPassword, setShowLoginPassword] = useState(false);
 
   // Sign up form state
