@@ -25,13 +25,14 @@ export function getSupabaseConfig(): SupabaseConfig {
     }
   }
 
-  // Fallback to Vite environment variables if defined
-  const envUrl = (import.meta as any).env?.VITE_SUPABASE_URL || '';
-  const envKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '';
+  // Fallback to Vite environment variables (tanpa as any yang bikin error build)
+  // Pastikan VITE_SUPABASE_URL dan VITE_SUPABASE_ANON_KEY sudah diisi di Cloudflare Pages
+  const envUrl = import.meta.env.VITE_SUPABASE_URL;
+  const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
   return {
-    url: envUrl.trim(),
-    anonKey: envKey.trim(),
+    url: typeof envUrl === 'string' ? envUrl.trim() : '',
+    anonKey: typeof envKey === 'string' ? envKey.trim() : '',
   };
 }
 
