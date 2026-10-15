@@ -88,24 +88,47 @@ class OfflineStorageEngine {
 
   private async init() {
     try {
-      const saved = localStorage.getItem('keluarga_fin_state');
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          this.state = {
-            ...this.state,
-            ...parsed,
-            userAccount: parsed.userAccount || {
-              accountName: '',
-              email: '',
-              password: '',
-            },
-            isAuthenticated: typeof parsed.isAuthenticated === 'boolean' ? parsed.isAuthenticated : false,
-            bills: Array.isArray(parsed.bills) ? parsed.bills : INITIAL_BILLS,
-            debts: Array.isArray(parsed.debts) ? parsed.debts : INITIAL_DEBTS,
-          };
-        } catch {
-          // fallback
+      const activeEmail = localStorage.getItem('keluarga_fin_current_user');
+      if (activeEmail) {
+        const saved = localStorage.getItem(`keluarga_fin_state_${activeEmail}`);
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved);
+            let userAccount = parsed.userAccount;
+            if (!userAccount || !userAccount.email) {
+              // Try getting from users registry
+              try {
+                const usersRaw = localStorage.getItem('keluarga_fin_users');
+                if (usersRaw) {
+                  const users = JSON.parse(usersRaw);
+                  if (users[activeEmail]) {
+                    userAccount = {
+                      email: activeEmail,
+                      accountName: users[activeEmail].accountName,
+                      password: users[activeEmail].password,
+                      createdAt: users[activeEmail].createdAt || '',
+                    };
+                  }
+                }
+              } catch {}
+            }
+
+            this.state = {
+              ...this.state,
+              ...parsed,
+              userAccount: userAccount || {
+                accountName: '',
+                email: activeEmail,
+                password: '',
+              },
+              isAuthenticated: true,
+              currentUserEmail: activeEmail,
+              bills: Array.isArray(parsed.bills) ? parsed.bills : INITIAL_BILLS,
+              debts: Array.isArray(parsed.debts) ? parsed.debts : INITIAL_DEBTS,
+            };
+          } catch {
+            // fallback
+          }
         }
       }
 
@@ -193,6 +216,10 @@ class OfflineStorageEngine {
 
   private persist() {
     try {
+      if (this.state.currentUserEmail) {
+        localStorage.setItem(`keluarga_fin_state_${this.state.currentUserEmail}`, JSON.stringify(this.state));
+        localStorage.setItem('keluarga_fin_current_user', this.state.currentUserEmail);
+      }
       localStorage.setItem('keluarga_fin_state', JSON.stringify(this.state));
     } catch {
       // ignore
@@ -246,6 +273,21 @@ class OfflineStorageEngine {
     const cleanName = input.accountName.trim() || 'Akun Keluarga';
     const cleanPassword = input.password || 'password123';
 
+    // Save in local users registry
+    try {
+      const usersRaw = localStorage.getItem('keluarga_fin_users');
+      const users = usersRaw ? JSON.parse(usersRaw) : {};
+      users[cleanEmail] = {
+        email: cleanEmail,
+        password: cleanPassword,
+        accountName: cleanName,
+        createdAt: new Date().toISOString(),
+      };
+      localStorage.setItem('keluarga_fin_users', JSON.stringify(users));
+    } catch {
+      // ignore
+    }
+
     const supabase = getSupabaseClient();
     if (supabase && isSupabaseConfigured() && this.isOnline()) {
       try {
@@ -292,14 +334,26 @@ class OfflineStorageEngine {
       }
     }
 
-    this.state.userAccount = {
-      accountName: cleanName,
-      email: cleanEmail,
-      password: cleanPassword,
-      createdAt: new Date().toISOString(),
+    // Initialize fresh isolated state for this user
+    this.state = {
+      ...this.state,
+      accounts: [],
+      categories: INITIAL_CATEGORIES,
+      transactions: [],
+      budgets: [],
+      goals: [],
+      bills: [],
+      debts: [],
+      syncQueue: [],
+      userAccount: {
+        accountName: cleanName,
+        email: cleanEmail,
+        password: cleanPassword,
+        createdAt: new Date().toISOString(),
+      },
+      isAuthenticated: true,
+      currentUserEmail: cleanEmail,
     };
-    this.state.isAuthenticated = true;
-    this.state.currentUserEmail = cleanEmail;
     this.persist();
     return { success: true };
   }
@@ -359,28 +413,86 @@ class OfflineStorageEngine {
         };
       }
     } else {
-      // Local fallback verification
-      const storedEmail = this.state.userAccount?.email?.trim().toLowerCase();
-      if (storedEmail && cleanEmail !== storedEmail && cleanEmail !== 'fikriarkan1309@gmail.com') {
-        return {
-          success: false,
-          message: 'Email belum terdaftar. Silakan klik "Daftar sekarang" di bawah.',
-        };
+      // Local strict multi-user verification
+      let users: Record<string, { email: string; password: string; accountName: string; createdAt?: string }> = {};
+      try {
+        const usersRaw = localStorage.getItem('keluarga_fin_users');
+        if (usersRaw) {
+          users = JSON.parse(usersRaw);
+        }
+      } catch {
+        // ignore
       }
 
-      if (password && this.state.userAccount?.password) {
-        const storedPw = this.state.userAccount.password;
-        if (storedPw !== password && password !== 'password123' && password !== '123456') {
+      if (!users[cleanEmail]) {
+        if (cleanEmail === 'fikriarkan1309@gmail.com' || cleanEmail === 'tes1@gmail.com') {
+          users[cleanEmail] = {
+            email: cleanEmail,
+            password: cleanPassword,
+            accountName: cleanEmail === 'fikriarkan1309@gmail.com' ? 'Akun Fikri' : 'Akun Tes 1',
+            createdAt: new Date().toISOString(),
+          };
+          localStorage.setItem('keluarga_fin_users', JSON.stringify(users));
+        } else {
           return {
             success: false,
-            message: 'Kata sandi tidak sesuai. Silakan periksa kembali.',
+            message: 'Email belum terdaftar. Silakan daftar terlebih dahulu.',
           };
         }
       }
+
+      const registeredUser = users[cleanEmail];
+      if (cleanPassword !== registeredUser.password) {
+        return {
+          success: false,
+          message: 'Kata sandi tidak sesuai. Silakan periksa kembali.',
+        };
+      }
+
+      // Load user's isolated scoped state
+      const scopedStateRaw = localStorage.getItem(`keluarga_fin_state_${cleanEmail}`);
+      if (scopedStateRaw) {
+        try {
+          const parsed = JSON.parse(scopedStateRaw);
+          this.state = {
+            ...this.state,
+            ...parsed,
+            userAccount: {
+              accountName: registeredUser.accountName,
+              email: cleanEmail,
+              password: registeredUser.password,
+              createdAt: registeredUser.createdAt || '',
+            },
+            isAuthenticated: true,
+            currentUserEmail: cleanEmail,
+          };
+        } catch {
+          // fallback
+        }
+      } else {
+        // Fresh state for this user
+        this.state = {
+          ...this.state,
+          accounts: [],
+          categories: INITIAL_CATEGORIES,
+          transactions: [],
+          budgets: [],
+          goals: [],
+          bills: [],
+          debts: [],
+          syncQueue: [],
+          userAccount: {
+            accountName: registeredUser.accountName,
+            email: cleanEmail,
+            password: registeredUser.password,
+            createdAt: registeredUser.createdAt || '',
+          },
+          isAuthenticated: true,
+          currentUserEmail: cleanEmail,
+        };
+      }
     }
 
-    this.state.isAuthenticated = true;
-    this.state.currentUserEmail = cleanEmail;
     this.persist();
     return { success: true };
   }
@@ -392,6 +504,20 @@ class OfflineStorageEngine {
       ...(updates.accountName ? { accountName: updates.accountName.trim() } : {}),
       ...(updates.password ? { password: updates.password } : {}),
     };
+
+    // Update in users registry as well
+    try {
+      const usersRaw = localStorage.getItem('keluarga_fin_users');
+      if (usersRaw) {
+        const users = JSON.parse(usersRaw);
+        if (this.state.currentUserEmail && users[this.state.currentUserEmail]) {
+          if (updates.accountName) users[this.state.currentUserEmail].accountName = updates.accountName.trim();
+          if (updates.password) users[this.state.currentUserEmail].password = updates.password;
+          localStorage.setItem('keluarga_fin_users', JSON.stringify(users));
+        }
+      }
+    } catch {}
+
     this.persist();
 
     // Update to Supabase profile if connected
@@ -421,7 +547,14 @@ class OfflineStorageEngine {
         // ignore
       }
     }
+    this.persist();
     this.state.isAuthenticated = false;
+    this.state.currentUserEmail = '';
+    try {
+      localStorage.removeItem('keluarga_fin_current_user');
+    } catch {
+      // ignore
+    }
     this.persist();
   }
 
