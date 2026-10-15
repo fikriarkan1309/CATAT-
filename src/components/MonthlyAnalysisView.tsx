@@ -25,27 +25,11 @@ interface MonthSummaryData {
   total: number;
 }
 
-const BASELINE_MONTHS: MonthSummaryData[] = [
-  { key: '2026-10', label: 'Oktober 2026', income: 1880000, expense: 1693000, total: 187000 },
-  { key: '2026-09', label: 'September 2026', income: 7478000, expense: 11154000, total: -3676000 },
-  { key: '2026-08', label: 'Agustus 2026', income: 6115000, expense: 3534000, total: 2581000 },
-  { key: '2026-07', label: 'Juli 2026', income: 6300000, expense: 6357000, total: -57000 },
-  { key: '2026-06', label: 'Juni 2026', income: 5502500, expense: 5042500, total: 460000 },
-  { key: '2026-05', label: 'Mei 2026', income: 3715000, expense: 6643000, total: -2928000 },
-  { key: '2026-04', label: 'April 2026', income: 7365000, expense: 5288000, total: 2077000 },
-];
+const BASELINE_MONTHS: MonthSummaryData[] = [];
 
-const BASELINE_OCT_EXPENSE_BREAKDOWN = [
-  { name: 'Berbelanja', percentage: 44, amount: 744000, color: '#EF4444' },
-  { name: 'Makanan/Minuman', percentage: 23, amount: 388000, color: '#0EA5E9' },
-  { name: 'Lain (Pengeluaran)', percentage: 20, amount: 331000, color: '#10B981' },
-  { name: 'Transportasi', percentage: 8, amount: 137000, color: '#F59E0B' },
-  { name: 'Keluarga', percentage: 5, amount: 93000, color: '#EAB308' },
-];
+const BASELINE_OCT_EXPENSE_BREAKDOWN = [];
 
-const BASELINE_OCT_INCOME_BREAKDOWN = [
-  { name: 'Pemasukan', percentage: 100, amount: 1880000, color: '#10B981' },
-];
+const BASELINE_OCT_INCOME_BREAKDOWN = [];
 
 const MiniListDonut: React.FC<{ income: number; expense: number }> = ({ income, expense }) => {
   const total = income + expense;
