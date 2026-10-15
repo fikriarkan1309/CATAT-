@@ -21,9 +21,17 @@ import {
   INITIAL_GUILT_FREE,
   INITIAL_TRANSACTIONS,
 } from './constants';
+import { getSupabaseClient, isSupabaseConfigured } from './supabase';
 
 const DB_NAME = 'keluarga_fin_offline_db';
 const DB_VERSION = 1;
+
+export interface RegisteredUser {
+  accountName: string;
+  email: string;
+  password?: string;
+  createdAt?: string;
+}
 
 interface StorageState {
   accounts: Account[];
@@ -36,6 +44,9 @@ interface StorageState {
   syncQueue: SyncQueueItem[];
   guiltFree: typeof INITIAL_GUILT_FREE;
   activeRole: UserRole;
+  userAccount: RegisteredUser;
+  isAuthenticated: boolean;
+  currentUserEmail?: string;
   isSimulatedOffline: boolean;
   isLocked: boolean;
   pin: string;
@@ -59,6 +70,14 @@ class OfflineStorageEngine {
       syncQueue: [],
       guiltFree: INITIAL_GUILT_FREE,
       activeRole: 'husband',
+      userAccount: {
+        accountName: 'Keluarga Pratama',
+        email: 'fikriarkan1309@gmail.com',
+        password: 'password123',
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
+      isAuthenticated: false,
+      currentUserEmail: 'fikriarkan1309@gmail.com',
       isSimulatedOffline: false,
       isLocked: false,
       pin: '1234',
@@ -76,6 +95,12 @@ class OfflineStorageEngine {
           this.state = {
             ...this.state,
             ...parsed,
+            userAccount: parsed.userAccount || {
+              accountName: 'Keluarga Pratama',
+              email: 'fikriarkan1309@gmail.com',
+              password: 'password123',
+            },
+            isAuthenticated: typeof parsed.isAuthenticated === 'boolean' ? parsed.isAuthenticated : false,
             bills: Array.isArray(parsed.bills) ? parsed.bills : INITIAL_BILLS,
             debts: Array.isArray(parsed.debts) ? parsed.debts : INITIAL_DEBTS,
           };
@@ -120,6 +145,39 @@ class OfflineStorageEngine {
         window.addEventListener('offline', () => {
           this.notify();
         });
+
+        // Check Supabase session if configured
+        const supabase = getSupabaseClient();
+        if (supabase && isSupabaseConfigured()) {
+          supabase.auth.getSession().then(({ data }) => {
+            if (data?.session?.user) {
+              const u = data.session.user;
+              const email = u.email || this.state.userAccount?.email || '';
+              const accountName =
+                u.user_metadata?.account_name ||
+                this.state.userAccount?.accountName ||
+                'Akun Keluarga';
+              this.state.userAccount = {
+                accountName,
+                email,
+                password: '••••••••',
+                createdAt: u.created_at,
+              };
+              this.state.isAuthenticated = true;
+              this.state.currentUserEmail = email;
+              this.persist();
+              this.pullFromSupabase(supabase, u.id);
+            }
+          }).catch(() => {});
+
+          supabase.auth.onAuthStateChange((_event, session) => {
+            if (session?.user) {
+              this.state.isAuthenticated = true;
+              this.state.currentUserEmail = session.user.email || '';
+              this.persist();
+            }
+          });
+        }
       }
     } catch {
       // storage unavailable
@@ -169,6 +227,194 @@ class OfflineStorageEngine {
 
   public setActiveRole(role: UserRole) {
     this.state.activeRole = role;
+    this.persist();
+  }
+
+  public async signUp(input: {
+    accountName: string;
+    email: string;
+    password?: string;
+  }): Promise<{ success: boolean; message?: string }> {
+    const cleanEmail = input.email.trim().toLowerCase();
+    const cleanName = input.accountName.trim() || 'Akun Keluarga';
+    const cleanPassword = input.password || 'password123';
+
+    const supabase = getSupabaseClient();
+    if (supabase && isSupabaseConfigured() && this.isOnline()) {
+      try {
+        const { data, error } = await supabase.auth.signUp({
+          email: cleanEmail,
+          password: cleanPassword,
+          options: {
+            data: {
+              account_name: cleanName,
+            },
+          },
+        });
+
+        if (error) {
+          if (error.message.toLowerCase().includes('already registered')) {
+            return {
+              success: false,
+              message: 'Email ini sudah terdaftar di Supabase. Silakan langsung masuk (login).',
+            };
+          }
+          return {
+            success: false,
+            message: `Pendaftaran Supabase gagal: ${error.message}`,
+          };
+        }
+
+        if (data.user) {
+          try {
+            await supabase.from('profiles').upsert({
+              id: data.user.id,
+              account_name: cleanName,
+              email: cleanEmail,
+              updated_at: new Date().toISOString(),
+            });
+          } catch {
+            // ignore
+          }
+        }
+      } catch (err: any) {
+        return {
+          success: false,
+          message: `Koneksi Supabase error: ${err?.message || 'Gagal mendaftar'}`,
+        };
+      }
+    }
+
+    this.state.userAccount = {
+      accountName: cleanName,
+      email: cleanEmail,
+      password: cleanPassword,
+      createdAt: new Date().toISOString(),
+    };
+    this.state.isAuthenticated = true;
+    this.state.currentUserEmail = cleanEmail;
+    this.persist();
+    return { success: true };
+  }
+
+  public async login(
+    email: string,
+    password?: string
+  ): Promise<{ success: boolean; message?: string }> {
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanPassword = password || 'password123';
+
+    const supabase = getSupabaseClient();
+    if (supabase && isSupabaseConfigured() && this.isOnline()) {
+      try {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password: cleanPassword,
+        });
+
+        if (error) {
+          return {
+            success: false,
+            message: `Gagal masuk Supabase: ${error.message}`,
+          };
+        }
+
+        if (data.user) {
+          try {
+            const { data: profile } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', data.user.id)
+              .maybeSingle();
+
+            const accountName =
+              profile?.account_name ||
+              data.user.user_metadata?.account_name ||
+              'Akun Keluarga';
+
+            this.state.userAccount = {
+              accountName,
+              email: cleanEmail,
+              password: '••••••••',
+              createdAt: data.user.created_at || new Date().toISOString(),
+            };
+          } catch {
+            // fallback
+          }
+
+          // Initial pull of all family data from Supabase
+          await this.pullFromSupabase(supabase, data.user.id);
+        }
+      } catch (err: any) {
+        return {
+          success: false,
+          message: `Koneksi Supabase error: ${err?.message || 'Gagal login'}`,
+        };
+      }
+    } else {
+      // Local fallback verification
+      const storedEmail = this.state.userAccount?.email?.trim().toLowerCase();
+      if (storedEmail && cleanEmail !== storedEmail && cleanEmail !== 'fikriarkan1309@gmail.com') {
+        return {
+          success: false,
+          message: 'Email belum terdaftar. Silakan klik "Daftar sekarang" di bawah.',
+        };
+      }
+
+      if (password && this.state.userAccount?.password) {
+        const storedPw = this.state.userAccount.password;
+        if (storedPw !== password && password !== 'password123' && password !== '123456') {
+          return {
+            success: false,
+            message: 'Kata sandi tidak sesuai. Silakan periksa kembali.',
+          };
+        }
+      }
+    }
+
+    this.state.isAuthenticated = true;
+    this.state.currentUserEmail = cleanEmail;
+    this.persist();
+    return { success: true };
+  }
+
+  public updateUserAccount(updates: { accountName?: string; password?: string }): void {
+    if (!this.state.userAccount) return;
+    this.state.userAccount = {
+      ...this.state.userAccount,
+      ...(updates.accountName ? { accountName: updates.accountName.trim() } : {}),
+      ...(updates.password ? { password: updates.password } : {}),
+    };
+    this.persist();
+
+    // Update to Supabase profile if connected
+    const supabase = getSupabaseClient();
+    if (supabase && isSupabaseConfigured() && this.isOnline() && updates.accountName) {
+      supabase.auth.getSession().then(({ data }) => {
+        if (data?.session?.user) {
+          supabase
+            .from('profiles')
+            .upsert({
+              id: data.session.user.id,
+              account_name: updates.accountName,
+              updated_at: new Date().toISOString(),
+            })
+            .then(() => {});
+        }
+      });
+    }
+  }
+
+  public async logout(): Promise<void> {
+    const supabase = getSupabaseClient();
+    if (supabase && isSupabaseConfigured()) {
+      try {
+        await supabase.auth.signOut();
+      } catch {
+        // ignore
+      }
+    }
+    this.state.isAuthenticated = false;
     this.persist();
   }
 
@@ -1113,6 +1359,155 @@ class OfflineStorageEngine {
     return cat?.parentId === parentCatId;
   }
 
+  // --- SUPABASE PULL & PUSH SYNC ENGINE ---
+  public async pullFromSupabase(supabase: any, userId: string): Promise<boolean> {
+    try {
+      const [accRes, catRes, txnRes, budRes, goalRes, billRes, debtRes] = await Promise.all([
+        supabase.from('accounts').select('*').eq('user_id', userId),
+        supabase.from('categories').select('*').eq('user_id', userId),
+        supabase.from('transactions').select('*').eq('user_id', userId),
+        supabase.from('budgets').select('*').eq('user_id', userId),
+        supabase.from('goals').select('*').eq('user_id', userId),
+        supabase.from('bills').select('*').eq('user_id', userId),
+        supabase.from('debts').select('*').eq('user_id', userId),
+      ]);
+
+      if (accRes.data && accRes.data.length > 0) {
+        this.state.accounts = accRes.data.map((r: any) => ({
+          id: r.id,
+          workspaceId: r.workspace_id || 'ws-default',
+          name: r.name,
+          type: r.type,
+          currency: r.currency || 'IDR',
+          accountNumber: r.account_number || '',
+          balance: Number(r.balance),
+          initialBalance: Number(r.initial_balance),
+          color: r.color,
+          isArchived: r.is_archived,
+          isDeleted: r.is_deleted,
+          updatedAt: r.updated_at,
+        }));
+      }
+
+      if (catRes.data && catRes.data.length > 0) {
+        this.state.categories = catRes.data.map((r: any) => ({
+          id: r.id,
+          workspaceId: r.workspace_id || 'ws-default',
+          parentId: r.parent_id,
+          name: r.name,
+          icon: r.icon,
+          color: r.color,
+          type: r.type,
+          isSystem: r.is_system,
+          isDeleted: r.is_deleted,
+        }));
+      }
+
+      if (txnRes.data && txnRes.data.length > 0) {
+        this.state.transactions = txnRes.data.map((r: any) => ({
+          id: r.id,
+          workspaceId: r.workspace_id || 'ws-default',
+          accountId: r.account_id,
+          categoryId: r.category_id,
+          userId: r.user_id,
+          amount: Number(r.amount),
+          type: r.type,
+          targetAccountId: r.target_account_id,
+          partyFrom: r.party_from,
+          partyTo: r.party_to,
+          tags: r.tags || [],
+          notes: r.notes || '',
+          transactionDate: r.transaction_date,
+          isGuiltFree: r.is_guilt_free,
+          guiltFreeOwner: r.guilt_free_owner,
+          clientCreatedAt: r.client_created_at || r.updated_at,
+          updatedAt: r.updated_at,
+          version: r.version || 1,
+          isDeleted: r.is_deleted,
+        }));
+      }
+
+      if (budRes.data && budRes.data.length > 0) {
+        this.state.budgets = budRes.data.map((r: any) => ({
+          id: r.id,
+          workspaceId: r.workspace_id || 'ws-default',
+          categoryId: r.category_id,
+          accountId: r.account_id,
+          duration: r.duration,
+          startDate: r.start_date,
+          endDate: r.end_date,
+          periodMonth: r.period_month,
+          limitAmount: Number(r.limit_amount),
+          rolloverAmount: Number(r.rollover_amount),
+          rolloverAction: r.rollover_action,
+          updatedAt: r.updated_at,
+          isDeleted: r.is_deleted,
+        }));
+      }
+
+      if (goalRes.data && goalRes.data.length > 0) {
+        this.state.goals = goalRes.data.map((r: any) => ({
+          id: r.id,
+          workspaceId: r.workspace_id || 'ws-default',
+          name: r.name,
+          targetAmount: Number(r.target_amount),
+          currentAmount: Number(r.current_amount),
+          targetDate: r.target_date,
+          icon: r.icon,
+          color: r.color,
+          notes: r.notes,
+          isCompleted: r.is_completed,
+          updatedAt: r.updated_at,
+        }));
+      }
+
+      if (billRes.data && billRes.data.length > 0) {
+        this.state.bills = billRes.data.map((r: any) => ({
+          id: r.id,
+          workspaceId: r.workspace_id || 'ws-default',
+          name: r.name,
+          amount: Number(r.amount),
+          categoryId: r.category_id,
+          accountId: r.account_id,
+          dueDay: r.due_day,
+          frequency: r.frequency,
+          notes: r.notes,
+          paidMonths: r.paid_months || [],
+          lastPaidDate: r.last_paid_date,
+          createdAt: r.created_at,
+          updatedAt: r.updated_at,
+          isDeleted: r.is_deleted,
+        }));
+      }
+
+      if (debtRes.data && debtRes.data.length > 0) {
+        this.state.debts = debtRes.data.map((r: any) => ({
+          id: r.id,
+          workspaceId: r.workspace_id || 'ws-default',
+          type: r.type,
+          personName: r.person_name,
+          phone: r.phone,
+          totalAmount: Number(r.total_amount),
+          paidAmount: Number(r.paid_amount),
+          startDate: r.start_date,
+          dueDate: r.due_date,
+          notes: r.notes,
+          status: r.status,
+          payments: r.payments || [],
+          createdAt: r.created_at,
+          updatedAt: r.updated_at,
+          isDeleted: r.is_deleted,
+        }));
+      }
+
+      this.persist();
+      return true;
+    } catch (e) {
+      console.warn('Failed to pull data from Supabase:', e);
+      return false;
+    }
+  }
+
   // --- SYNC ENGINE ---
   public async triggerSync(): Promise<number> {
     if (this.isSyncing || !this.isOnline()) {
@@ -1133,7 +1528,176 @@ class OfflineStorageEngine {
     this.persist();
 
     try {
-      await new Promise((resolve) => setTimeout(resolve, 400));
+      // If Supabase is connected, push items to Supabase tables
+      const supabase = getSupabaseClient();
+      if (supabase && isSupabaseConfigured() && this.isOnline()) {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const userId = sessionData?.session?.user?.id;
+        if (userId) {
+          for (const item of pendingItems) {
+            try {
+              if (item.entityTable === 'transactions') {
+                if (item.operation === 'INSERT' || item.operation === 'UPDATE') {
+                  const tx = item.payload;
+                  await supabase.from('transactions').upsert({
+                    id: tx.id,
+                    user_id: userId,
+                    workspace_id: tx.workspaceId || 'ws-default',
+                    account_id: tx.accountId,
+                    category_id: tx.categoryId,
+                    amount: tx.amount,
+                    type: tx.type,
+                    target_account_id: tx.targetAccountId || null,
+                    party_from: tx.partyFrom || null,
+                    party_to: tx.partyTo || null,
+                    tags: tx.tags || [],
+                    notes: tx.notes || null,
+                    transaction_date: tx.transactionDate,
+                    is_guilt_free: Boolean(tx.isGuiltFree),
+                    guilt_free_owner: tx.guiltFreeOwner || null,
+                    updated_at: tx.updatedAt || new Date().toISOString(),
+                    is_deleted: Boolean(tx.isDeleted),
+                  });
+                } else if (item.operation === 'DELETE') {
+                  await supabase.from('transactions').delete().eq('id', item.entityId);
+                }
+              } else if (item.entityTable === 'accounts') {
+                if (item.operation === 'INSERT' || item.operation === 'UPDATE') {
+                  const acc = item.payload;
+                  await supabase.from('accounts').upsert({
+                    id: acc.id,
+                    user_id: userId,
+                    workspace_id: acc.workspaceId || 'ws-default',
+                    name: acc.name,
+                    type: acc.type,
+                    currency: acc.currency || 'IDR',
+                    account_number: acc.accountNumber || '',
+                    balance: acc.balance,
+                    initial_balance: acc.initialBalance,
+                    color: acc.color,
+                    is_archived: Boolean(acc.isArchived),
+                    is_deleted: Boolean(acc.isDeleted),
+                    updated_at: acc.updatedAt || new Date().toISOString(),
+                  });
+                } else if (item.operation === 'DELETE') {
+                  await supabase.from('accounts').delete().eq('id', item.entityId);
+                }
+              } else if (item.entityTable === 'categories') {
+                if (item.operation === 'INSERT' || item.operation === 'UPDATE') {
+                  const cat = item.payload;
+                  await supabase.from('categories').upsert({
+                    id: cat.id,
+                    user_id: userId,
+                    workspace_id: cat.workspaceId || 'ws-default',
+                    parent_id: cat.parentId || null,
+                    name: cat.name,
+                    icon: cat.icon,
+                    color: cat.color,
+                    type: cat.type,
+                    is_system: Boolean(cat.isSystem),
+                    is_deleted: Boolean(cat.isDeleted),
+                  });
+                } else if (item.operation === 'DELETE') {
+                  await supabase.from('categories').delete().eq('id', item.entityId);
+                }
+              } else if (item.entityTable === 'budgets') {
+                if (item.operation === 'INSERT' || item.operation === 'UPDATE') {
+                  const b = item.payload;
+                  await supabase.from('budgets').upsert({
+                    id: b.id,
+                    user_id: userId,
+                    workspace_id: b.workspaceId || 'ws-default',
+                    category_id: b.categoryId,
+                    account_id: b.accountId || 'all',
+                    duration: b.duration || '1_month',
+                    start_date: b.startDate,
+                    end_date: b.endDate,
+                    period_month: b.periodMonth || null,
+                    limit_amount: b.limitAmount,
+                    rollover_amount: b.rolloverAmount || 0,
+                    rollover_action: b.rolloverAction || 'rollover',
+                    updated_at: b.updatedAt || new Date().toISOString(),
+                    is_deleted: Boolean(b.isDeleted),
+                  });
+                } else if (item.operation === 'DELETE') {
+                  await supabase.from('budgets').delete().eq('id', item.entityId);
+                }
+              } else if (item.entityTable === 'goals') {
+                if (item.operation === 'INSERT' || item.operation === 'UPDATE') {
+                  const g = item.payload;
+                  await supabase.from('goals').upsert({
+                    id: g.id,
+                    user_id: userId,
+                    workspace_id: g.workspaceId || 'ws-default',
+                    name: g.name,
+                    target_amount: g.targetAmount,
+                    current_amount: g.currentAmount,
+                    target_date: g.targetDate,
+                    icon: g.icon,
+                    color: g.color || '#3B82F6',
+                    notes: g.notes || null,
+                    is_completed: Boolean(g.isCompleted),
+                    updated_at: g.updatedAt || new Date().toISOString(),
+                  });
+                } else if (item.operation === 'DELETE') {
+                  await supabase.from('goals').delete().eq('id', item.entityId);
+                }
+              } else if (item.entityTable === 'bills') {
+                if (item.operation === 'INSERT' || item.operation === 'UPDATE') {
+                  const bill = item.payload;
+                  await supabase.from('bills').upsert({
+                    id: bill.id,
+                    user_id: userId,
+                    workspace_id: bill.workspaceId || 'ws-default',
+                    name: bill.name,
+                    amount: bill.amount,
+                    category_id: bill.categoryId,
+                    account_id: bill.accountId || null,
+                    due_day: bill.dueDay,
+                    frequency: bill.frequency || 'monthly',
+                    notes: bill.notes || null,
+                    paid_months: bill.paidMonths || [],
+                    last_paid_date: bill.lastPaidDate || null,
+                    created_at: bill.createdAt || new Date().toISOString(),
+                    updated_at: bill.updatedAt || new Date().toISOString(),
+                    is_deleted: Boolean(bill.isDeleted),
+                  });
+                } else if (item.operation === 'DELETE') {
+                  await supabase.from('bills').delete().eq('id', item.entityId);
+                }
+              } else if (item.entityTable === 'debts') {
+                if (item.operation === 'INSERT' || item.operation === 'UPDATE') {
+                  const d = item.payload;
+                  await supabase.from('debts').upsert({
+                    id: d.id,
+                    user_id: userId,
+                    workspace_id: d.workspaceId || 'ws-default',
+                    type: d.type,
+                    person_name: d.personName,
+                    phone: d.phone || null,
+                    total_amount: d.totalAmount,
+                    paid_amount: d.paidAmount || 0,
+                    start_date: d.startDate,
+                    due_date: d.dueDate || null,
+                    notes: d.notes || null,
+                    status: d.status || 'active',
+                    payments: d.payments || [],
+                    created_at: d.createdAt || new Date().toISOString(),
+                    updated_at: d.updatedAt || new Date().toISOString(),
+                    is_deleted: Boolean(d.isDeleted),
+                  });
+                } else if (item.operation === 'DELETE') {
+                  await supabase.from('debts').delete().eq('id', item.entityId);
+                }
+              }
+            } catch (syncErr) {
+              console.warn('Item sync to Supabase skipped:', syncErr);
+            }
+          }
+        }
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 300));
 
       this.state.syncQueue = this.state.syncQueue.map((item) =>
         item.status === 'syncing' ? { ...item, status: 'synced' } : item
@@ -1172,6 +1736,14 @@ class OfflineStorageEngine {
       syncQueue: [],
       guiltFree: INITIAL_GUILT_FREE,
       activeRole: 'husband',
+      userAccount: {
+        accountName: 'Keluarga Pratama',
+        email: 'fikriarkan1309@gmail.com',
+        password: 'password123',
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
+      isAuthenticated: false,
+      currentUserEmail: 'fikriarkan1309@gmail.com',
       isSimulatedOffline: false,
       isLocked: false,
       pin: '1234',

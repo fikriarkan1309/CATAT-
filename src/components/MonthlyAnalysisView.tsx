@@ -119,7 +119,10 @@ export const MonthlyAnalysisView: React.FC<MonthlyAnalysisViewProps> = ({
     const map = new Map<string, { income: number; expense: number; transactions: Transaction[] }>();
 
     transactions.forEach((t) => {
-      const ym = t.transactionDate.slice(0, 7);
+      const d = new Date(t.transactionDate);
+      const ym = isNaN(d.getTime())
+        ? t.transactionDate.slice(0, 7)
+        : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       if (!map.has(ym)) {
         map.set(ym, { income: 0, expense: 0, transactions: [] });
       }

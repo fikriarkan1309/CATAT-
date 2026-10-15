@@ -26,6 +26,12 @@ export function useFinanceStore() {
     isSyncing,
     pendingSyncCount,
     // Actions
+    login: (email: string, password?: string) => storageEngine.login(email, password),
+    signUp: (input: { accountName: string; email: string; password?: string }) =>
+      storageEngine.signUp(input),
+    updateUserAccount: (updates: { accountName?: string; password?: string }) =>
+      storageEngine.updateUserAccount(updates),
+    logout: () => storageEngine.logout(),
     toggleSimulatedOffline: () => storageEngine.toggleSimulatedOffline(),
     setActiveRole: (role: UserRole) => storageEngine.setActiveRole(role),
     setLocked: (locked: boolean) => storageEngine.setLocked(locked),

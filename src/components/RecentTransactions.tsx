@@ -149,7 +149,11 @@ export const RecentTransactions: React.FC<RecentTransactionsProps> = ({
       const d = new Date(tx.transactionDate);
       if (isNaN(d.getTime())) return;
 
-      const dateKey = tx.transactionDate.split('T')[0];
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const dayNum = String(d.getDate()).padStart(2, '0');
+      const dateKey = `${y}-${m}-${dayNum}`;
+
       if (!groupsMap.has(dateKey)) {
         const daysIndo = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
         const monthsIndo = [
@@ -170,7 +174,7 @@ export const RecentTransactions: React.FC<RecentTransactionsProps> = ({
         groupsMap.set(dateKey, {
           dateKey,
           dateObj: d,
-          dayNumber: String(d.getDate()).padStart(2, '0'),
+          dayNumber: dayNum,
           dayName: daysIndo[d.getDay()],
           monthYear: `${monthsIndo[d.getMonth()]} ${d.getFullYear()}`,
           incomeTotal: 0,
@@ -185,7 +189,7 @@ export const RecentTransactions: React.FC<RecentTransactionsProps> = ({
       g.items.push(tx);
     });
 
-    return Array.from(groupsMap.values());
+    return Array.from(groupsMap.values()).sort((a, b) => b.dateKey.localeCompare(a.dateKey));
   }, [transactions]);
 
   // Edit Handlers

@@ -8,7 +8,10 @@ import {
   ChevronRight,
   X,
   Settings,
+  LogOut,
+  Cloud,
 } from 'lucide-react';
+import { isSupabaseConfigured } from '../lib/supabase';
 
 interface SettingsMenuModalProps {
   isOpen: boolean;
@@ -16,8 +19,10 @@ interface SettingsMenuModalProps {
   onOpenDataModal: () => void;
   onOpenCategories: () => void;
   onOpenAccountModal: () => void;
+  onOpenSupabaseModal?: () => void;
   theme: 'light' | 'dark';
   onToggleTheme: () => void;
+  onLogout?: () => void;
 }
 
 export const SettingsMenuModal: React.FC<SettingsMenuModalProps> = ({
@@ -26,8 +31,10 @@ export const SettingsMenuModal: React.FC<SettingsMenuModalProps> = ({
   onOpenDataModal,
   onOpenCategories,
   onOpenAccountModal,
+  onOpenSupabaseModal,
   theme,
   onToggleTheme,
+  onLogout,
 }) => {
   const modalRef = useRef<HTMLDivElement>(null);
 
@@ -97,6 +104,44 @@ export const SettingsMenuModal: React.FC<SettingsMenuModalProps> = ({
             </div>
             <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-200" />
           </button>
+
+          {/* 1.5. DATABASE SUPABASE (CLOUD SYNC) */}
+          {onOpenSupabaseModal && (
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                onOpenSupabaseModal();
+              }}
+              className="w-full flex items-center justify-between p-2.5 rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-800 text-left transition-colors group"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center group-hover:scale-105 transition-transform">
+                  <Cloud className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-bold text-slate-900 dark:text-white block">
+                      Database Supabase
+                    </span>
+                    <span
+                      className={`text-[9px] font-bold px-1.5 py-0.2 rounded-md ${
+                        isSupabaseConfigured()
+                          ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
+                          : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                      }`}
+                    >
+                      {isSupabaseConfigured() ? 'Terhubung' : 'Cloud'}
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Koneksi database & skema SQL
+                  </span>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-200" />
+            </button>
+          )}
 
           {/* 2. KATEGORI */}
           <button
@@ -173,6 +218,34 @@ export const SettingsMenuModal: React.FC<SettingsMenuModalProps> = ({
               <ChevronRight className="w-4 h-4 text-indigo-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-200" />
             </button>
           </div>
+
+          {/* 5. KELUAR / LOGOUT */}
+          {onLogout && (
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onLogout();
+                }}
+                className="w-full flex items-center justify-between p-2.5 rounded-2xl hover:bg-rose-50 dark:hover:bg-rose-950/40 text-left transition-colors group"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center font-bold text-xs group-hover:scale-105 transition-transform">
+                    <LogOut className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold text-rose-600 dark:text-rose-400 block">
+                      Keluar (Logout)
+                    </span>
+                    <span className="text-[11px] text-slate-400">
+                      Kembali ke halaman login & pairing
+                    </span>
+                  </div>
+                </div>
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

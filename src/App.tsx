@@ -22,12 +22,20 @@ import { DataBackupModal } from './components/DataBackupModal';
 import { UserAccountModal } from './components/UserAccountModal';
 import { RecentTransactions } from './components/RecentTransactions';
 import { MonthlyAnalysisView } from './components/MonthlyAnalysisView';
+import { AuthLoginScreen } from './components/AuthLoginScreen';
+import { SupabaseConfigModal } from './components/SupabaseConfigModal';
 import { Account, Budget, Transaction, TransactionType } from './types/finance';
 
 export default function App() {
   const { theme, toggleTheme } = useTheme();
 
   const {
+    isAuthenticated,
+    userAccount,
+    login,
+    signUp,
+    updateUserAccount,
+    logout,
     accounts,
     categories,
     transactions,
@@ -85,6 +93,7 @@ export default function App() {
   const [isSettingsMenuOpen, setIsSettingsMenuOpen] = useState(false);
   const [isDataModalOpen, setIsDataModalOpen] = useState(false);
   const [isUserAccountModalOpen, setIsUserAccountModalOpen] = useState(false);
+  const [isSupabaseModalOpen, setIsSupabaseModalOpen] = useState(false);
 
   // Transaction Modal State
   const [isTxnModalOpen, setIsTxnModalOpen] = useState(false);
@@ -190,6 +199,26 @@ export default function App() {
     });
     setEditingTransaction(null);
   };
+
+  if (!isAuthenticated) {
+    return (
+      <>
+        <AuthLoginScreen
+          onLogin={(em, pw) => login(em, pw)}
+          onSignUp={(input) => signUp(input)}
+          defaultEmail={userAccount?.email || 'fikriarkan1309@gmail.com'}
+          theme={theme}
+          onToggleTheme={toggleTheme}
+          onOpenSupabaseConfig={() => setIsSupabaseModalOpen(true)}
+        />
+        <SupabaseConfigModal
+          isOpen={isSupabaseModalOpen}
+          onClose={() => setIsSupabaseModalOpen(false)}
+          onConnectionChange={() => triggerSync()}
+        />
+      </>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col font-sans text-slate-900 dark:text-slate-100 pb-20 overflow-x-hidden transition-colors">
@@ -484,8 +513,10 @@ export default function App() {
         onOpenDataModal={() => setIsDataModalOpen(true)}
         onOpenCategories={() => setCurrentTab('categories')}
         onOpenAccountModal={() => setIsUserAccountModalOpen(true)}
+        onOpenSupabaseModal={() => setIsSupabaseModalOpen(true)}
         theme={theme}
         onToggleTheme={toggleTheme}
+        onLogout={logout}
       />
 
       {/* Data & Backup Modal (Poin Nomor 3) */}
@@ -504,10 +535,19 @@ export default function App() {
       <UserAccountModal
         isOpen={isUserAccountModalOpen}
         onClose={() => setIsUserAccountModalOpen(false)}
-        activeRole={activeRole}
-        onSelectRole={setActiveRole}
+        userAccount={userAccount}
+        onUpdateAccountName={(newName) => updateUserAccount({ accountName: newName })}
         isOnline={isOnline}
         pendingSyncCount={pendingSyncCount}
+        onLogout={logout}
+        onOpenSupabaseModal={() => setIsSupabaseModalOpen(true)}
+      />
+
+      {/* Database Supabase Configuration Modal */}
+      <SupabaseConfigModal
+        isOpen={isSupabaseModalOpen}
+        onClose={() => setIsSupabaseModalOpen(false)}
+        onConnectionChange={() => triggerSync()}
       />
 
       {/* Sync Queue Inspector Modal */}
