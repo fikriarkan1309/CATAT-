@@ -168,7 +168,8 @@ export const MonthlyAnalysisView: React.FC<MonthlyAnalysisViewProps> = ({
   }, [dynamicMonthsMap]);
 
   const currentMonthIdx = mergedMonthsList.findIndex((m) => m.key === selectedMonthKey);
-  const currentMonthData = mergedMonthsList[currentMonthIdx] || mergedMonthsList[0] || BASELINE_MONTHS[0];
+  const fallbackMonth: MonthSummaryData = { key: '2026-10', label: 'Bulan Ini', income: 0, expense: 0, total: 0 };
+  const currentMonthData = mergedMonthsList[currentMonthIdx] || mergedMonthsList[0] || fallbackMonth;
 
   const handleMonthClick = (m: MonthSummaryData) => {
     setTargetMonthForChoice(m);
