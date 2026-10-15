@@ -86,14 +86,6 @@ class OfflineStorageEngine {
     this.init();
   }
 
-  private async syncAndPull(userId: string) {
-    const supabase = getSupabaseClient();
-    if (supabase && isSupabaseConfigured() && this.isOnline()) {
-      await this.triggerSync();
-      await this.pullFromSupabase(supabase, userId);
-    }
-  }
-
   private async init() {
     try {
       const activeEmail = localStorage.getItem('keluarga_fin_current_user');
@@ -104,6 +96,7 @@ class OfflineStorageEngine {
             const parsed = JSON.parse(saved);
             let userAccount = parsed.userAccount;
             if (!userAccount || !userAccount.email) {
+              // Try getting from users registry
               try {
                 const usersRaw = localStorage.getItem('keluarga_fin_users');
                 if (usersRaw) {
@@ -139,6 +132,7 @@ class OfflineStorageEngine {
         }
       }
 
+
       if (typeof window !== 'undefined' && 'indexedDB' in window) {
         const request = window.indexedDB.open(DB_NAME, DB_VERSION);
 
@@ -167,6 +161,7 @@ class OfflineStorageEngine {
       }
 
       if (typeof window !== 'undefined') {
+        // Temporary fix: Clear invalid Supabase config on init
         const stored = localStorage.getItem('keluarga_fin_supabase_config');
         if (stored && stored.includes('/rest/v1')) {
           localStorage.removeItem('keluarga_fin_supabase_config');
@@ -175,31 +170,31 @@ class OfflineStorageEngine {
 
         window.addEventListener('online', () => {
           this.notify();
+          this.triggerSync();
           const supabase = getSupabaseClient();
           if (supabase && isSupabaseConfigured()) {
             supabase.auth.getUser().then(({ data }) => {
               if (data?.user) {
-                this.syncAndPull(data.user.id);
+                this.pullFromSupabase(supabase, data.user.id);
               }
             });
           }
         });
-
         window.addEventListener('offline', () => {
           this.notify();
         });
-
         window.addEventListener('focus', () => {
           const supabase = getSupabaseClient();
           if (supabase && isSupabaseConfigured() && this.isOnline()) {
             supabase.auth.getUser().then(({ data }) => {
               if (data?.user) {
-                this.syncAndPull(data.user.id);
+                this.pullFromSupabase(supabase, data.user.id);
               }
             });
           }
         });
 
+        // Check Supabase session if configured
         const supabase = getSupabaseClient();
         if (supabase && isSupabaseConfigured()) {
           supabase.auth.getSession().then(({ data }) => {
@@ -219,7 +214,7 @@ class OfflineStorageEngine {
               this.state.isAuthenticated = true;
               this.state.currentUserEmail = email;
               this.persist();
-              this.syncAndPull(u.id);
+              this.pullFromSupabase(supabase, u.id);
             }
           }).catch(() => {});
 
@@ -296,6 +291,7 @@ class OfflineStorageEngine {
     const cleanName = input.accountName.trim() || 'Akun Keluarga';
     const cleanPassword = input.password || 'password123';
 
+    // Save in local users registry
     try {
       const usersRaw = localStorage.getItem('keluarga_fin_users');
       const users = usersRaw ? JSON.parse(usersRaw) : {};
@@ -306,7 +302,9 @@ class OfflineStorageEngine {
         createdAt: new Date().toISOString(),
       };
       localStorage.setItem('keluarga_fin_users', JSON.stringify(users));
-    } catch {}
+    } catch {
+      // ignore
+    }
 
     const supabase = getSupabaseClient();
     if (supabase && isSupabaseConfigured() && this.isOnline()) {
@@ -342,7 +340,9 @@ class OfflineStorageEngine {
               email: cleanEmail,
               updated_at: new Date().toISOString(),
             });
-          } catch {}
+          } catch {
+            // ignore
+          }
         }
       } catch (err: any) {
         return {
@@ -352,6 +352,7 @@ class OfflineStorageEngine {
       }
     }
 
+    // Initialize fresh isolated state for this user
     this.state = {
       ...this.state,
       accounts: [],
@@ -416,9 +417,11 @@ class OfflineStorageEngine {
               password: '••••••••',
               createdAt: data.user.created_at || new Date().toISOString(),
             };
-          } catch {}
+          } catch {
+            // fallback
+          }
 
-          await this.triggerSync();
+          // Initial pull of all family data from Supabase
           await this.pullFromSupabase(supabase, data.user.id);
         }
       } catch (err: any) {
@@ -428,13 +431,16 @@ class OfflineStorageEngine {
         };
       }
     } else {
+      // Local strict multi-user verification
       let users: Record<string, { email: string; password: string; accountName: string; createdAt?: string }> = {};
       try {
         const usersRaw = localStorage.getItem('keluarga_fin_users');
         if (usersRaw) {
           users = JSON.parse(usersRaw);
         }
-      } catch {}
+      } catch {
+        // ignore
+      }
 
       if (!users[cleanEmail]) {
         if (cleanEmail === 'fikriarkan1309@gmail.com' || cleanEmail === 'tes1@gmail.com') {
@@ -461,6 +467,7 @@ class OfflineStorageEngine {
         };
       }
 
+      // Load user's isolated scoped state
       const scopedStateRaw = localStorage.getItem(`keluarga_fin_state_${cleanEmail}`);
       if (scopedStateRaw) {
         try {
@@ -477,8 +484,11 @@ class OfflineStorageEngine {
             isAuthenticated: true,
             currentUserEmail: cleanEmail,
           };
-        } catch {}
+        } catch {
+          // fallback
+        }
       } else {
+        // Fresh state for this user
         this.state = {
           ...this.state,
           accounts: [],
@@ -513,6 +523,7 @@ class OfflineStorageEngine {
       ...(updates.password ? { password: updates.password } : {}),
     };
 
+    // Update in users registry as well
     try {
       const usersRaw = localStorage.getItem('keluarga_fin_users');
       if (usersRaw) {
@@ -527,6 +538,7 @@ class OfflineStorageEngine {
 
     this.persist();
 
+    // Update to Supabase profile if connected
     const supabase = getSupabaseClient();
     if (supabase && isSupabaseConfigured() && this.isOnline() && updates.accountName) {
       supabase.auth.getSession().then(({ data }) => {
@@ -549,14 +561,18 @@ class OfflineStorageEngine {
     if (supabase && isSupabaseConfigured()) {
       try {
         await supabase.auth.signOut();
-      } catch {}
+      } catch {
+        // ignore
+      }
     }
     this.persist();
     this.state.isAuthenticated = false;
     this.state.currentUserEmail = '';
     try {
       localStorage.removeItem('keluarga_fin_current_user');
-    } catch {}
+    } catch {
+      // ignore
+    }
     this.persist();
   }
 
@@ -720,8 +736,10 @@ class OfflineStorageEngine {
       isDeleted: false,
     };
 
+    // 1. Optimistic Local Update: Update transaction list
     this.state.transactions = [transaction, ...this.state.transactions];
 
+    // 2. Optimistic Balance Mutation
     this.updateAccountBalance(
       input.accountId,
       input.amount,
@@ -729,10 +747,12 @@ class OfflineStorageEngine {
       input.targetAccountId
     );
 
+    // 3. Guilt Free Spending update if toggled
     if (input.isGuiltFree && input.guiltFreeOwner) {
       this.state.guiltFree[input.guiltFreeOwner].spent += input.amount;
     }
 
+    // 4. Enqueue into local Sync Queue
     const queueItem: SyncQueueItem = {
       id: this.generateUUID(),
       entityTable: 'transactions',
@@ -757,6 +777,7 @@ class OfflineStorageEngine {
     const oldTxn = this.state.transactions.find((t) => t.id === id);
     if (!oldTxn) return;
 
+    // First revert old balance impact
     if (oldTxn.type === 'expense') {
       this.revertBalance(oldTxn.accountId, oldTxn.amount, 'income');
     } else if (oldTxn.type === 'income') {
@@ -774,6 +795,7 @@ class OfflineStorageEngine {
       version: oldTxn.version + 1,
     };
 
+    // Apply new balance impact
     this.updateAccountBalance(
       updatedTxn.accountId,
       updatedTxn.amount,
@@ -804,6 +826,7 @@ class OfflineStorageEngine {
     const txn = this.state.transactions.find((t) => t.id === id);
     if (!txn) return;
 
+    // Revert account balance
     if (txn.type === 'expense') {
       this.revertBalance(txn.accountId, txn.amount, 'income');
     } else if (txn.type === 'income') {
@@ -813,6 +836,7 @@ class OfflineStorageEngine {
       this.revertBalance(txn.targetAccountId, txn.amount, 'expense');
     }
 
+    // Revert guilt-free if applicable
     if (txn.isGuiltFree && txn.guiltFreeOwner) {
       this.state.guiltFree[txn.guiltFreeOwner].spent = Math.max(
         0,
@@ -1173,13 +1197,14 @@ class OfflineStorageEngine {
     const bill = this.state.bills.find((b) => b.id === billId);
     if (!bill) return;
 
-    const currentMonth = new Date().toISOString().slice(0, 7);
+    const currentMonth = new Date().toISOString().slice(0, 7); // 'YYYY-MM'
     if (!bill.paidMonths.includes(currentMonth)) {
       bill.paidMonths.push(currentMonth);
     }
     bill.lastPaidDate = new Date().toISOString();
     bill.updatedAt = new Date().toISOString();
 
+    // Auto deduct account balance
     this.state.accounts = this.state.accounts.map((acc) => {
       if (acc.id === accountId) {
         return { ...acc, balance: acc.balance - bill.amount, updatedAt: new Date().toISOString() };
@@ -1187,6 +1212,7 @@ class OfflineStorageEngine {
       return acc;
     });
 
+    // Record expense transaction
     const now = new Date().toISOString();
     const txn: Transaction = {
       id: this.generateUUID(),
@@ -1224,7 +1250,7 @@ class OfflineStorageEngine {
     this.persist();
   }
 
-  // --- DEBTS & LOANS MANAGEMENT ---
+  // --- DEBTS & LOANS (HUTANG PIUTANG) MANAGEMENT ---
   public addDebt(input: {
     type: 'debt' | 'receivable';
     personName: string;
@@ -1313,15 +1339,19 @@ class OfflineStorageEngine {
     const newPaidTotal = debt.paidAmount + paymentAmount;
     const isSettled = newPaidTotal >= debt.totalAmount;
 
+    // Adjust account balance if accountId is provided
     if (payment.accountId) {
       this.state.accounts = this.state.accounts.map((acc) => {
         if (acc.id === payment.accountId) {
+          // If debt (Hutang Saya): we pay out money -> expense / deduct balance
+          // If receivable (Piutang Saya): person pays us money -> income / add balance
           const delta = debt.type === 'debt' ? -paymentAmount : paymentAmount;
           return { ...acc, balance: acc.balance + delta, updatedAt: new Date().toISOString() };
         }
         return acc;
       });
 
+      // Record transaction
       const now = new Date().toISOString();
       const isExpense = debt.type === 'debt';
       const txn: Transaction = {
@@ -1419,8 +1449,10 @@ class OfflineStorageEngine {
       ].join(',');
     });
 
+    // Add UTF-8 BOM so Excel opens it with Indonesian characters correctly
     return '\uFEFF' + [headers.join(','), ...rows].join('\r\n');
   }
+
 
   // --- BUDGET & ROLLOVER ENGINE ---
   public processBudgetRollover(
@@ -1498,15 +1530,8 @@ class OfflineStorageEngine {
         supabase.from('debts').select('*').eq('user_id', userId),
       ]);
 
-      const pendingIds = new Set(
-        this.state.syncQueue
-          .filter((q) => q.status === 'pending' || q.status === 'syncing')
-          .map((q) => q.entityId)
-      );
-
-      // 1. ACCOUNTS MERGE
-      if (accRes.data) {
-        const remoteAccs: Account[] = accRes.data.map((r: any) => ({
+      if (accRes.data && accRes.data.length > 0) {
+        this.state.accounts = accRes.data.map((r: any) => ({
           id: r.id,
           workspaceId: r.workspace_id || 'ws-default',
           name: r.name,
@@ -1520,14 +1545,10 @@ class OfflineStorageEngine {
           isDeleted: r.is_deleted,
           updatedAt: r.updated_at,
         }));
-        const remoteIds = new Set(remoteAccs.map((a) => a.id));
-        const unsyncedLocal = this.state.accounts.filter((a) => pendingIds.has(a.id) && !remoteIds.has(a.id));
-        this.state.accounts = [...remoteAccs, ...unsyncedLocal];
       }
 
-      // 2. CATEGORIES MERGE
-      if (catRes.data) {
-        const remoteCats: Category[] = catRes.data.map((r: any) => ({
+      if (catRes.data && catRes.data.length > 0) {
+        this.state.categories = catRes.data.map((r: any) => ({
           id: r.id,
           workspaceId: r.workspace_id || 'ws-default',
           parentId: r.parent_id,
@@ -1538,14 +1559,10 @@ class OfflineStorageEngine {
           isSystem: r.is_system,
           isDeleted: r.is_deleted,
         }));
-        const remoteIds = new Set(remoteCats.map((c) => c.id));
-        const unsyncedLocal = this.state.categories.filter((c) => pendingIds.has(c.id) && !remoteIds.has(c.id));
-        this.state.categories = [...remoteCats, ...unsyncedLocal];
       }
 
-      // 3. TRANSACTIONS MERGE
-      if (txnRes.data) {
-        const remoteTxs: Transaction[] = txnRes.data.map((r: any) => ({
+      if (txnRes.data && txnRes.data.length > 0) {
+        this.state.transactions = txnRes.data.map((r: any) => ({
           id: r.id,
           workspaceId: r.workspace_id || 'ws-default',
           accountId: r.account_id,
@@ -1566,16 +1583,10 @@ class OfflineStorageEngine {
           version: r.version || 1,
           isDeleted: r.is_deleted,
         }));
-        const remoteIds = new Set(remoteTxs.map((t) => t.id));
-        const unsyncedLocal = this.state.transactions.filter((t) => pendingIds.has(t.id) && !remoteIds.has(t.id));
-        this.state.transactions = [...remoteTxs, ...unsyncedLocal].sort(
-          (a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime()
-        );
       }
 
-      // 4. BUDGETS MERGE
-      if (budRes.data) {
-        const remoteBudgets: Budget[] = budRes.data.map((r: any) => ({
+      if (budRes.data && budRes.data.length > 0) {
+        this.state.budgets = budRes.data.map((r: any) => ({
           id: r.id,
           workspaceId: r.workspace_id || 'ws-default',
           categoryId: r.category_id,
@@ -1590,14 +1601,10 @@ class OfflineStorageEngine {
           updatedAt: r.updated_at,
           isDeleted: r.is_deleted,
         }));
-        const remoteIds = new Set(remoteBudgets.map((b) => b.id));
-        const unsyncedLocal = this.state.budgets.filter((b) => pendingIds.has(b.id) && !remoteIds.has(b.id));
-        this.state.budgets = [...remoteBudgets, ...unsyncedLocal];
       }
 
-      // 5. GOALS MERGE
-      if (goalRes.data) {
-        const remoteGoals: SharedGoal[] = goalRes.data.map((r: any) => ({
+      if (goalRes.data && goalRes.data.length > 0) {
+        this.state.goals = goalRes.data.map((r: any) => ({
           id: r.id,
           workspaceId: r.workspace_id || 'ws-default',
           name: r.name,
@@ -1610,14 +1617,10 @@ class OfflineStorageEngine {
           isCompleted: r.is_completed,
           updatedAt: r.updated_at,
         }));
-        const remoteIds = new Set(remoteGoals.map((g) => g.id));
-        const unsyncedLocal = this.state.goals.filter((g) => pendingIds.has(g.id) && !remoteIds.has(g.id));
-        this.state.goals = [...remoteGoals, ...unsyncedLocal];
       }
 
-      // 6. BILLS MERGE
-      if (billRes.data) {
-        const remoteBills: RecurringBill[] = billRes.data.map((r: any) => ({
+      if (billRes.data && billRes.data.length > 0) {
+        this.state.bills = billRes.data.map((r: any) => ({
           id: r.id,
           workspaceId: r.workspace_id || 'ws-default',
           name: r.name,
@@ -1633,14 +1636,10 @@ class OfflineStorageEngine {
           updatedAt: r.updated_at,
           isDeleted: r.is_deleted,
         }));
-        const remoteIds = new Set(remoteBills.map((b) => b.id));
-        const unsyncedLocal = this.state.bills.filter((b) => pendingIds.has(b.id) && !remoteIds.has(b.id));
-        this.state.bills = [...remoteBills, ...unsyncedLocal];
       }
 
-      // 7. DEBTS MERGE
-      if (debtRes.data) {
-        const remoteDebts: DebtItem[] = debtRes.data.map((r: any) => ({
+      if (debtRes.data && debtRes.data.length > 0) {
+        this.state.debts = debtRes.data.map((r: any) => ({
           id: r.id,
           workspaceId: r.workspace_id || 'ws-default',
           type: r.type,
@@ -1657,9 +1656,6 @@ class OfflineStorageEngine {
           updatedAt: r.updated_at,
           isDeleted: r.is_deleted,
         }));
-        const remoteIds = new Set(remoteDebts.map((d) => d.id));
-        const unsyncedLocal = this.state.debts.filter((d) => pendingIds.has(d.id) && !remoteIds.has(d.id));
-        this.state.debts = [...remoteDebts, ...unsyncedLocal];
       }
 
       this.persist();
@@ -1681,237 +1677,201 @@ class OfflineStorageEngine {
       return 0;
     }
 
-    const supabase = getSupabaseClient();
-    if (!supabase || !isSupabaseConfigured()) {
-      return 0;
-    }
-
     this.isSyncing = true;
     this.notify();
 
-    const syncingIds = new Set(pendingItems.map((i) => i.id));
     this.state.syncQueue = this.state.syncQueue.map((item) =>
-      syncingIds.has(item.id) ? { ...item, status: 'syncing' } : item
+      item.status === 'pending' ? { ...item, status: 'syncing' } : item
     );
     this.persist();
 
-    const successfullySyncedIds = new Set<string>();
-
     try {
-      const { data: userData } = await supabase.auth.getUser();
-      let userId = userData?.user?.id;
-      if (!userId) {
-        const { data: sessionData } = await supabase.auth.getSession();
-        userId = sessionData?.session?.user?.id;
-      }
-
-      if (!userId) {
-        console.warn('Sync aborted: No authenticated user ID found.');
-        this.state.syncQueue = this.state.syncQueue.map((item) =>
-          syncingIds.has(item.id) ? { ...item, status: 'pending' } : item
-        );
-        this.persist();
-        return 0;
-      }
-
-      for (const item of pendingItems) {
-        try {
-          let error: any = null;
-
-          if (item.entityTable === 'transactions') {
-            if (item.operation === 'INSERT' || item.operation === 'UPDATE') {
-              const tx = item.payload;
-              const res = await supabase.from('transactions').upsert({
-                id: tx.id,
-                user_id: userId,
-                workspace_id: tx.workspaceId || 'ws-default',
-                account_id: tx.accountId,
-                category_id: tx.categoryId,
-                amount: tx.amount,
-                type: tx.type,
-                target_account_id: tx.targetAccountId || null,
-                party_from: tx.partyFrom || null,
-                party_to: tx.partyTo || null,
-                tags: tx.tags || [],
-                notes: tx.notes || null,
-                transaction_date: tx.transactionDate,
-                is_guilt_free: Boolean(tx.isGuiltFree),
-                guilt_free_owner: tx.guiltFreeOwner || null,
-                updated_at: tx.updatedAt || new Date().toISOString(),
-                is_deleted: Boolean(tx.isDeleted),
-              });
-              error = res.error;
-            } else if (item.operation === 'DELETE') {
-              const res = await supabase.from('transactions').delete().eq('id', item.entityId);
-              error = res.error;
-            }
-          } else if (item.entityTable === 'accounts') {
-            if (item.operation === 'INSERT' || item.operation === 'UPDATE') {
-              const acc = item.payload;
-              const res = await supabase.from('accounts').upsert({
-                id: acc.id,
-                user_id: userId,
-                workspace_id: acc.workspaceId || 'ws-default',
-                name: acc.name,
-                type: acc.type,
-                currency: acc.currency || 'IDR',
-                account_number: acc.accountNumber || '',
-                balance: acc.balance,
-                initial_balance: acc.initialBalance,
-                color: acc.color,
-                is_archived: Boolean(acc.isArchived),
-                is_deleted: Boolean(acc.isDeleted),
-                updated_at: acc.updatedAt || new Date().toISOString(),
-              });
-              error = res.error;
-            } else if (item.operation === 'DELETE') {
-              const res = await supabase.from('accounts').delete().eq('id', item.entityId);
-              error = res.error;
-            }
-          } else if (item.entityTable === 'categories') {
-            if (item.operation === 'INSERT' || item.operation === 'UPDATE') {
-              const cat = item.payload;
-              const res = await supabase.from('categories').upsert({
-                id: cat.id,
-                user_id: userId,
-                workspace_id: cat.workspaceId || 'ws-default',
-                parent_id: cat.parentId || null,
-                name: cat.name,
-                icon: cat.icon,
-                color: cat.color,
-                type: cat.type,
-                is_system: Boolean(cat.isSystem),
-                is_deleted: Boolean(cat.isDeleted),
-              });
-              error = res.error;
-            } else if (item.operation === 'DELETE') {
-              const res = await supabase.from('categories').delete().eq('id', item.entityId);
-              error = res.error;
-            }
-          } else if (item.entityTable === 'budgets') {
-            if (item.operation === 'INSERT' || item.operation === 'UPDATE') {
-              const b = item.payload;
-              const res = await supabase.from('budgets').upsert({
-                id: b.id,
-                user_id: userId,
-                workspace_id: b.workspaceId || 'ws-default',
-                category_id: b.categoryId,
-                account_id: b.accountId || 'all',
-                duration: b.duration || '1_month',
-                start_date: b.startDate,
-                end_date: b.endDate,
-                period_month: b.periodMonth || null,
-                limit_amount: b.limitAmount,
-                rollover_amount: b.rolloverAmount || 0,
-                rollover_action: b.rolloverAction || 'rollover',
-                updated_at: b.updatedAt || new Date().toISOString(),
-                is_deleted: Boolean(b.isDeleted),
-              });
-              error = res.error;
-            } else if (item.operation === 'DELETE') {
-              const res = await supabase.from('budgets').delete().eq('id', item.entityId);
-              error = res.error;
-            }
-          } else if (item.entityTable === 'goals') {
-            if (item.operation === 'INSERT' || item.operation === 'UPDATE') {
-              const g = item.payload;
-              const res = await supabase.from('goals').upsert({
-                id: g.id,
-                user_id: userId,
-                workspace_id: g.workspaceId || 'ws-default',
-                name: g.name,
-                target_amount: g.targetAmount,
-                current_amount: g.currentAmount,
-                target_date: g.targetDate,
-                icon: g.icon,
-                color: g.color || '#3B82F6',
-                notes: g.notes || null,
-                is_completed: Boolean(g.isCompleted),
-                updated_at: g.updatedAt || new Date().toISOString(),
-              });
-              error = res.error;
-            } else if (item.operation === 'DELETE') {
-              const res = await supabase.from('goals').delete().eq('id', item.entityId);
-              error = res.error;
-            }
-          } else if (item.entityTable === 'bills') {
-            if (item.operation === 'INSERT' || item.operation === 'UPDATE') {
-              const bill = item.payload;
-              const res = await supabase.from('bills').upsert({
-                id: bill.id,
-                user_id: userId,
-                workspace_id: bill.workspaceId || 'ws-default',
-                name: bill.name,
-                amount: bill.amount,
-                category_id: bill.categoryId,
-                account_id: bill.accountId || null,
-                due_day: bill.dueDay,
-                frequency: bill.frequency || 'monthly',
-                notes: bill.notes || null,
-                paid_months: bill.paidMonths || [],
-                last_paid_date: bill.lastPaidDate || null,
-                created_at: bill.createdAt || new Date().toISOString(),
-                updated_at: bill.updatedAt || new Date().toISOString(),
-                is_deleted: Boolean(bill.isDeleted),
-              });
-              error = res.error;
-            } else if (item.operation === 'DELETE') {
-              const res = await supabase.from('bills').delete().eq('id', item.entityId);
-              error = res.error;
-            }
-          } else if (item.entityTable === 'debts') {
-            if (item.operation === 'INSERT' || item.operation === 'UPDATE') {
-              const d = item.payload;
-              const res = await supabase.from('debts').upsert({
-                id: d.id,
-                user_id: userId,
-                workspace_id: d.workspaceId || 'ws-default',
-                type: d.type,
-                person_name: d.personName,
-                phone: d.phone || null,
-                total_amount: d.totalAmount,
-                paid_amount: d.paidAmount || 0,
-                start_date: d.startDate,
-                due_date: d.dueDate || null,
-                notes: d.notes || null,
-                status: d.status || 'active',
-                payments: d.payments || [],
-                created_at: d.createdAt || new Date().toISOString(),
-                updated_at: d.updatedAt || new Date().toISOString(),
-                is_deleted: Boolean(d.isDeleted),
-              });
-              error = res.error;
-            } else if (item.operation === 'DELETE') {
-              const res = await supabase.from('debts').delete().eq('id', item.entityId);
-              error = res.error;
+      // If Supabase is connected, push items to Supabase tables
+      const supabase = getSupabaseClient();
+      if (supabase && isSupabaseConfigured() && this.isOnline()) {
+        const { data: userData } = await supabase.auth.getUser();
+        let userId = userData?.user?.id;
+        if (!userId) {
+          const { data: sessionData } = await supabase.auth.getSession();
+          userId = sessionData?.session?.user?.id;
+        }
+        if (userId) {
+          for (const item of pendingItems) {
+            try {
+              if (item.entityTable === 'transactions') {
+                if (item.operation === 'INSERT' || item.operation === 'UPDATE') {
+                  const tx = item.payload;
+                  await supabase.from('transactions').upsert({
+                    id: tx.id,
+                    user_id: userId,
+                    workspace_id: tx.workspaceId || 'ws-default',
+                    account_id: tx.accountId,
+                    category_id: tx.categoryId,
+                    amount: tx.amount,
+                    type: tx.type,
+                    target_account_id: tx.targetAccountId || null,
+                    party_from: tx.partyFrom || null,
+                    party_to: tx.partyTo || null,
+                    tags: tx.tags || [],
+                    notes: tx.notes || null,
+                    transaction_date: tx.transactionDate,
+                    is_guilt_free: Boolean(tx.isGuiltFree),
+                    guilt_free_owner: tx.guiltFreeOwner || null,
+                    updated_at: tx.updatedAt || new Date().toISOString(),
+                    is_deleted: Boolean(tx.isDeleted),
+                  });
+                } else if (item.operation === 'DELETE') {
+                  await supabase.from('transactions').delete().eq('id', item.entityId);
+                }
+              } else if (item.entityTable === 'accounts') {
+                if (item.operation === 'INSERT' || item.operation === 'UPDATE') {
+                  const acc = item.payload;
+                  await supabase.from('accounts').upsert({
+                    id: acc.id,
+                    user_id: userId,
+                    workspace_id: acc.workspaceId || 'ws-default',
+                    name: acc.name,
+                    type: acc.type,
+                    currency: acc.currency || 'IDR',
+                    account_number: acc.accountNumber || '',
+                    balance: acc.balance,
+                    initial_balance: acc.initialBalance,
+                    color: acc.color,
+                    is_archived: Boolean(acc.isArchived),
+                    is_deleted: Boolean(acc.isDeleted),
+                    updated_at: acc.updatedAt || new Date().toISOString(),
+                  });
+                } else if (item.operation === 'DELETE') {
+                  await supabase.from('accounts').delete().eq('id', item.entityId);
+                }
+              } else if (item.entityTable === 'categories') {
+                if (item.operation === 'INSERT' || item.operation === 'UPDATE') {
+                  const cat = item.payload;
+                  await supabase.from('categories').upsert({
+                    id: cat.id,
+                    user_id: userId,
+                    workspace_id: cat.workspaceId || 'ws-default',
+                    parent_id: cat.parentId || null,
+                    name: cat.name,
+                    icon: cat.icon,
+                    color: cat.color,
+                    type: cat.type,
+                    is_system: Boolean(cat.isSystem),
+                    is_deleted: Boolean(cat.isDeleted),
+                  });
+                } else if (item.operation === 'DELETE') {
+                  await supabase.from('categories').delete().eq('id', item.entityId);
+                }
+              } else if (item.entityTable === 'budgets') {
+                if (item.operation === 'INSERT' || item.operation === 'UPDATE') {
+                  const b = item.payload;
+                  await supabase.from('budgets').upsert({
+                    id: b.id,
+                    user_id: userId,
+                    workspace_id: b.workspaceId || 'ws-default',
+                    category_id: b.categoryId,
+                    account_id: b.accountId || 'all',
+                    duration: b.duration || '1_month',
+                    start_date: b.startDate,
+                    end_date: b.endDate,
+                    period_month: b.periodMonth || null,
+                    limit_amount: b.limitAmount,
+                    rollover_amount: b.rolloverAmount || 0,
+                    rollover_action: b.rolloverAction || 'rollover',
+                    updated_at: b.updatedAt || new Date().toISOString(),
+                    is_deleted: Boolean(b.isDeleted),
+                  });
+                } else if (item.operation === 'DELETE') {
+                  await supabase.from('budgets').delete().eq('id', item.entityId);
+                }
+              } else if (item.entityTable === 'goals') {
+                if (item.operation === 'INSERT' || item.operation === 'UPDATE') {
+                  const g = item.payload;
+                  await supabase.from('goals').upsert({
+                    id: g.id,
+                    user_id: userId,
+                    workspace_id: g.workspaceId || 'ws-default',
+                    name: g.name,
+                    target_amount: g.targetAmount,
+                    current_amount: g.currentAmount,
+                    target_date: g.targetDate,
+                    icon: g.icon,
+                    color: g.color || '#3B82F6',
+                    notes: g.notes || null,
+                    is_completed: Boolean(g.isCompleted),
+                    updated_at: g.updatedAt || new Date().toISOString(),
+                  });
+                } else if (item.operation === 'DELETE') {
+                  await supabase.from('goals').delete().eq('id', item.entityId);
+                }
+              } else if (item.entityTable === 'bills') {
+                if (item.operation === 'INSERT' || item.operation === 'UPDATE') {
+                  const bill = item.payload;
+                  await supabase.from('bills').upsert({
+                    id: bill.id,
+                    user_id: userId,
+                    workspace_id: bill.workspaceId || 'ws-default',
+                    name: bill.name,
+                    amount: bill.amount,
+                    category_id: bill.categoryId,
+                    account_id: bill.accountId || null,
+                    due_day: bill.dueDay,
+                    frequency: bill.frequency || 'monthly',
+                    notes: bill.notes || null,
+                    paid_months: bill.paidMonths || [],
+                    last_paid_date: bill.lastPaidDate || null,
+                    created_at: bill.createdAt || new Date().toISOString(),
+                    updated_at: bill.updatedAt || new Date().toISOString(),
+                    is_deleted: Boolean(bill.isDeleted),
+                  });
+                } else if (item.operation === 'DELETE') {
+                  await supabase.from('bills').delete().eq('id', item.entityId);
+                }
+              } else if (item.entityTable === 'debts') {
+                if (item.operation === 'INSERT' || item.operation === 'UPDATE') {
+                  const d = item.payload;
+                  await supabase.from('debts').upsert({
+                    id: d.id,
+                    user_id: userId,
+                    workspace_id: d.workspaceId || 'ws-default',
+                    type: d.type,
+                    person_name: d.personName,
+                    phone: d.phone || null,
+                    total_amount: d.totalAmount,
+                    paid_amount: d.paidAmount || 0,
+                    start_date: d.startDate,
+                    due_date: d.dueDate || null,
+                    notes: d.notes || null,
+                    status: d.status || 'active',
+                    payments: d.payments || [],
+                    created_at: d.createdAt || new Date().toISOString(),
+                    updated_at: d.updatedAt || new Date().toISOString(),
+                    is_deleted: Boolean(d.isDeleted),
+                  });
+                } else if (item.operation === 'DELETE') {
+                  await supabase.from('debts').delete().eq('id', item.entityId);
+                }
+              }
+            } catch (syncErr) {
+              console.warn('Item sync to Supabase skipped:', syncErr);
             }
           }
-
-          if (!error) {
-            successfullySyncedIds.add(item.id);
-          } else {
-            console.warn(`Item ${item.id} sync failed:`, error);
-          }
-        } catch (syncErr) {
-          console.warn(`Item ${item.id} sync exception:`, syncErr);
         }
       }
 
-      this.state.syncQueue = this.state.syncQueue.map((item) => {
-        if (syncingIds.has(item.id)) {
-          return successfullySyncedIds.has(item.id)
-            ? { ...item, status: 'synced' }
-            : { ...item, status: 'pending', retryCount: item.retryCount + 1 };
-        }
-        return item;
-      });
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      this.state.syncQueue = this.state.syncQueue.map((item) =>
+        item.status === 'syncing' ? { ...item, status: 'synced' } : item
+      );
 
       this.persist();
-      return successfullySyncedIds.size;
-    } catch (err) {
-      console.error('Trigger sync error:', err);
+      return pendingItems.length;
+    } catch {
       this.state.syncQueue = this.state.syncQueue.map((item) =>
-        syncingIds.has(item.id) ? { ...item, status: 'pending', retryCount: item.retryCount + 1 } : item
+        item.status === 'syncing'
+          ? { ...item, status: 'pending', retryCount: item.retryCount + 1 }
+          : item
       );
       this.persist();
       return 0;
