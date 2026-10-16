@@ -382,49 +382,269 @@ class OfflineStorageEngine {
     const cleanEmail = email.trim().toLowerCase();
     const cleanPassword = password || 'password123';
     // =========================================================
-    // BLOK MODE DEMO (EASTER EGG - TANPA TOMBOL)
+    // =========================================================
+    // BLOK MODE DEMO (demo@catatin.com) - MOCK DATA LENGKAP & KAYA
     // =========================================================
     if (cleanEmail === 'demo@catatin.com') {
-      const now = new Date().toISOString();
-      const currentMonth = now.slice(0, 7); // YYYY-MM
+      const today = new Date();
+      const now = today.toISOString();
+      const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
       
+      const fmtDate = (daysAgo: number, timeStr = '12:00:00.000Z') => {
+        const d = new Date(today);
+        d.setDate(d.getDate() - daysAgo);
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd}T${timeStr}`;
+      };
+
+      const dayDateOnly = (daysAgo: number) => {
+        const d = new Date(today);
+        d.setDate(d.getDate() - daysAgo);
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd}`;
+      };
+
       this.state = {
         ...this.state,
         isAuthenticated: true,
         currentUserEmail: 'demo@catatin.com',
         userAccount: {
-          accountName: 'Keluarga Preview',
+          accountName: 'Keluarga Bahagia (Demo)',
           email: 'demo@catatin.com',
           password: 'demo',
           createdAt: now,
         },
         isSimulatedOffline: true, // Cegah sinkronisasi ke Supabase
         accounts: [
-          { id: 'acc-1', workspaceId: 'ws-demo', name: 'Rekening BCA', type: 'bank', currency: 'IDR', balance: 12500000, initialBalance: 10000000, color: '#2563EB', isArchived: false, updatedAt: now },
-          { id: 'acc-2', workspaceId: 'ws-demo', name: 'Dompet Istri', type: 'cash', currency: 'IDR', balance: 3200000, initialBalance: 2000000, color: '#10B981', isArchived: false, updatedAt: now }
+          { id: 'acc-bca', workspaceId: 'ws-demo', name: 'BCA Rekening Utama', type: 'bank', currency: 'IDR', accountNumber: '8830192831', balance: 14850000, initialBalance: 10000000, color: '#2563EB', isArchived: false, updatedAt: now },
+          { id: 'acc-mandiri', workspaceId: 'ws-demo', name: 'Bank Mandiri Tabungan', type: 'bank', currency: 'IDR', accountNumber: '137001928310', balance: 28500000, initialBalance: 25000000, color: '#0284C7', isArchived: false, updatedAt: now },
+          { id: 'acc-cash-suami', workspaceId: 'ws-demo', name: 'Dompet Tunai Suami', type: 'cash', currency: 'IDR', balance: 1250000, initialBalance: 1500000, color: '#10B981', isArchived: false, updatedAt: now },
+          { id: 'acc-cash-istri', workspaceId: 'ws-demo', name: 'Dompet Tunai Istri', type: 'cash', currency: 'IDR', balance: 2100000, initialBalance: 2000000, color: '#F59E0B', isArchived: false, updatedAt: now },
+          { id: 'acc-gopay', workspaceId: 'ws-demo', name: 'GoPay & OVO Digital', type: 'ewallet', currency: 'IDR', balance: 850000, initialBalance: 500000, color: '#06B6D4', isArchived: false, updatedAt: now },
+          { id: 'acc-bibit', workspaceId: 'ws-demo', name: 'Investasi Bibit (Reksadana & SBN)', type: 'investment', currency: 'IDR', balance: 45000000, initialBalance: 40000000, color: '#8B5CF6', isArchived: false, updatedAt: now },
         ],
         categories: [
-          { id: 'cat-in', workspaceId: 'ws-demo', parentId: null, name: 'Gaji Bulanan', icon: 'Wallet', color: '#10B981', type: 'income', isSystem: true, isDeleted: false },
-          { id: 'cat-out-1', workspaceId: 'ws-demo', parentId: null, name: 'Makan & Minum', icon: 'Coffee', color: '#F59E0B', type: 'expense', isSystem: true, isDeleted: false },
-          { id: 'cat-out-2', workspaceId: 'ws-demo', parentId: null, name: 'Tagihan Rutin', icon: 'FileText', color: '#EF4444', type: 'expense', isSystem: true, isDeleted: false },
+          // 1. Kebutuhan Pokok & Sub-kategori
+          { id: 'cat-pokok', workspaceId: 'ws-demo', parentId: null, name: 'Kebutuhan Pokok', icon: 'ShoppingBag', color: '#2563EB', type: 'expense', isSystem: true, isDeleted: false },
+          { id: 'sub-belanja', workspaceId: 'ws-demo', parentId: 'cat-pokok', name: 'Belanja Bulanan Supermarket', icon: 'ShoppingCart', color: '#3B82F6', type: 'expense', isSystem: true, isDeleted: false },
+          { id: 'sub-sayur', workspaceId: 'ws-demo', parentId: 'cat-pokok', name: 'Sayur & Daging Segar', icon: 'Apple', color: '#60A5FA', type: 'expense', isSystem: true, isDeleted: false },
+          { id: 'sub-listrik', workspaceId: 'ws-demo', parentId: 'cat-pokok', name: 'Listrik, Air & Gas Rumah', icon: 'Zap', color: '#93C5FD', type: 'expense', isSystem: true, isDeleted: false },
+
+          // 2. Makanan & Minuman & Sub-kategori
+          { id: 'cat-makan', workspaceId: 'ws-demo', parentId: null, name: 'Makanan & Minuman', icon: 'Coffee', color: '#F59E0B', type: 'expense', isSystem: true, isDeleted: false },
+          { id: 'sub-makan-luar', workspaceId: 'ws-demo', parentId: 'cat-makan', name: 'Restoran & Makan Luar', icon: 'Utensils', color: '#FBBF24', type: 'expense', isSystem: true, isDeleted: false },
+          { id: 'sub-kopi', workspaceId: 'ws-demo', parentId: 'cat-makan', name: 'Kopi & Camilan Senja', icon: 'Coffee', color: '#FCD34D', type: 'expense', isSystem: true, isDeleted: false },
+          { id: 'sub-delivery', workspaceId: 'ws-demo', parentId: 'cat-makan', name: 'Pesan Makanan Online', icon: 'Bike', color: '#FDE68A', type: 'expense', isSystem: true, isDeleted: false },
+
+          // 3. Transportasi & Sub-kategori
+          { id: 'cat-trans', workspaceId: 'ws-demo', parentId: null, name: 'Transportasi', icon: 'Car', color: '#6366F1', type: 'expense', isSystem: true, isDeleted: false },
+          { id: 'sub-bensin', workspaceId: 'ws-demo', parentId: 'cat-trans', name: 'Bensin & BBM Kendaraan', icon: 'Fuel', color: '#818CF8', type: 'expense', isSystem: true, isDeleted: false },
+          { id: 'sub-tol', workspaceId: 'ws-demo', parentId: 'cat-trans', name: 'Tol, Parkir & MRT', icon: 'Navigation', color: '#A5B4FC', type: 'expense', isSystem: true, isDeleted: false },
+          { id: 'sub-servis', workspaceId: 'ws-demo', parentId: 'cat-trans', name: 'Servis Mobil & Motor', icon: 'Wrench', color: '#C7D2FE', type: 'expense', isSystem: true, isDeleted: false },
+
+          // 4. Hiburan & Rekreasi & Sub-kategori
+          { id: 'cat-hiburan', workspaceId: 'ws-demo', parentId: null, name: 'Hiburan & Rekreasi', icon: 'Film', color: '#EC4899', type: 'expense', isSystem: true, isDeleted: false },
+          { id: 'sub-bioskop', workspaceId: 'ws-demo', parentId: 'cat-hiburan', name: 'Tiket Bioskop & Event', icon: 'Film', color: '#F472B6', type: 'expense', isSystem: true, isDeleted: false },
+          { id: 'sub-streaming', workspaceId: 'ws-demo', parentId: 'cat-hiburan', name: 'Netflix & Spotify Family', icon: 'Tv', color: '#FBCFE8', type: 'expense', isSystem: true, isDeleted: false },
+          { id: 'sub-wisata', workspaceId: 'ws-demo', parentId: 'cat-hiburan', name: 'Wisata Akhir Pekan', icon: 'Compass', color: '#FDA4AF', type: 'expense', isSystem: true, isDeleted: false },
+
+          // 5. Pendidikan & Anak & Sub-kategori
+          { id: 'cat-pendidikan', workspaceId: 'ws-demo', parentId: null, name: 'Pendidikan & Anak', icon: 'GraduationCap', color: '#8B5CF6', type: 'expense', isSystem: true, isDeleted: false },
+          { id: 'sub-spp', workspaceId: 'ws-demo', parentId: 'cat-pendidikan', name: 'SPP & Iuran Sekolah', icon: 'School', color: '#A78BFA', type: 'expense', isSystem: true, isDeleted: false },
+          { id: 'sub-les', workspaceId: 'ws-demo', parentId: 'cat-pendidikan', name: 'Buku & Les Privat', icon: 'BookOpen', color: '#C4B5FD', type: 'expense', isSystem: true, isDeleted: false },
+          { id: 'sub-mainan', workspaceId: 'ws-demo', parentId: 'cat-pendidikan', name: 'Kebutuhan & Mainan Anak', icon: 'Smile', color: '#DDD6FE', type: 'expense', isSystem: true, isDeleted: false },
+
+          // 6. Kesehatan & Perawatan & Sub-kategori
+          { id: 'cat-kesehatan', workspaceId: 'ws-demo', parentId: null, name: 'Kesehatan & Perawatan', icon: 'HeartPulse', color: '#14B8A6', type: 'expense', isSystem: true, isDeleted: false },
+          { id: 'sub-dokter', workspaceId: 'ws-demo', parentId: 'cat-kesehatan', name: 'Dokter, Klinik & Resep', icon: 'Stethoscope', color: '#2DD4BF', type: 'expense', isSystem: true, isDeleted: false },
+          { id: 'sub-vitamin', workspaceId: 'ws-demo', parentId: 'cat-kesehatan', name: 'Vitamin, Madu & Suplemen', icon: 'Pill', color: '#5EEAD4', type: 'expense', isSystem: true, isDeleted: false },
+
+          // 7. Pemasukan / Pendapatan & Sub-kategori
+          { id: 'cat-income', workspaceId: 'ws-demo', parentId: null, name: 'Pemasukan Keluarga', icon: 'Wallet', color: '#10B981', type: 'income', isSystem: true, isDeleted: false },
+          { id: 'sub-gaji-suami', workspaceId: 'ws-demo', parentId: 'cat-income', name: 'Gaji Pokok Suami', icon: 'Briefcase', color: '#34D399', type: 'income', isSystem: true, isDeleted: false },
+          { id: 'sub-bisnis-istri', workspaceId: 'ws-demo', parentId: 'cat-income', name: 'Usaha Online Shop Istri', icon: 'ShoppingBag', color: '#6EE7B7', type: 'income', isSystem: true, isDeleted: false },
+          { id: 'sub-freelance', workspaceId: 'ws-demo', parentId: 'cat-income', name: 'Proyek Tambahan & Freelance', icon: 'Laptop', color: '#A7F3D0', type: 'income', isSystem: true, isDeleted: false },
+          { id: 'sub-dividen', workspaceId: 'ws-demo', parentId: 'cat-income', name: 'Dividen & Return Investasi', icon: 'TrendingUp', color: '#D1FAE5', type: 'income', isSystem: true, isDeleted: false },
         ],
         transactions: [
-          { id: 'tx-1', workspaceId: 'ws-demo', accountId: 'acc-1', categoryId: 'cat-in', userId: 'demo', amount: 15000000, type: 'income', tags: ['Gaji'], notes: 'Gaji Bulan Ini', transactionDate: `${currentMonth}-01T09:00:00.000Z`, isGuiltFree: false, guiltFreeOwner: null, clientCreatedAt: now, updatedAt: now, version: 1, isDeleted: false },
-          { id: 'tx-2', workspaceId: 'ws-demo', accountId: 'acc-1', categoryId: 'cat-out-2', userId: 'demo', amount: 850000, type: 'expense', tags: ['Listrik'], notes: 'Token Listrik & Air', transactionDate: `${currentMonth}-03T14:00:00.000Z`, isGuiltFree: false, guiltFreeOwner: null, clientCreatedAt: now, updatedAt: now, version: 1, isDeleted: false },
-          { id: 'tx-3', workspaceId: 'ws-demo', accountId: 'acc-2', categoryId: 'cat-out-1', userId: 'demo', amount: 250000, type: 'expense', tags: ['Makan Malam'], notes: 'Makan di luar sekeluarga', transactionDate: `${currentMonth}-08T19:00:00.000Z`, isGuiltFree: true, guiltFreeOwner: 'wife', clientCreatedAt: now, updatedAt: now, version: 1, isDeleted: false },
-          { id: 'tx-4', workspaceId: 'ws-demo', accountId: 'acc-2', categoryId: 'cat-out-1', userId: 'demo', amount: 65000, type: 'expense', tags: ['Kopi'], notes: 'Ngopi senja', transactionDate: `${currentMonth}-12T16:00:00.000Z`, isGuiltFree: true, guiltFreeOwner: 'husband', clientCreatedAt: now, updatedAt: now, version: 1, isDeleted: false },
+          // Hari Ini (0 days ago)
+          { id: 'tx-demo-1', workspaceId: 'ws-demo', accountId: 'acc-bca', categoryId: 'sub-makan-luar', userId: 'demo', amount: 285000, type: 'expense', partyTo: 'Resto Sari Bundo', tags: ['Makan', 'Keluarga'], notes: 'Makan siang bareng keluarga', transactionDate: fmtDate(0, '12:30:00.000Z'), isGuiltFree: false, guiltFreeOwner: null, clientCreatedAt: now, updatedAt: now, version: 1, isDeleted: false },
+          { id: 'tx-demo-2', workspaceId: 'ws-demo', accountId: 'acc-mandiri', categoryId: 'sub-bensin', userId: 'demo', amount: 250000, type: 'expense', partyTo: 'SPBU Pertamina', tags: ['BBM', 'Mobil'], notes: 'Isi Pertamax full tank', transactionDate: fmtDate(0, '08:15:00.000Z'), isGuiltFree: false, guiltFreeOwner: null, clientCreatedAt: now, updatedAt: now, version: 1, isDeleted: false },
+          { id: 'tx-demo-3', workspaceId: 'ws-demo', accountId: 'acc-cash-suami', categoryId: 'sub-kopi', userId: 'demo', amount: 45000, type: 'expense', partyTo: 'Kopi Kenangan', tags: ['Ngopi'], notes: 'Ngopi santai sepulang kantor', transactionDate: fmtDate(0, '17:00:00.000Z'), isGuiltFree: true, guiltFreeOwner: 'husband', clientCreatedAt: now, updatedAt: now, version: 1, isDeleted: false },
+
+          // Kemarin (1 day ago)
+          { id: 'tx-demo-4', workspaceId: 'ws-demo', accountId: 'acc-bca', categoryId: 'sub-belanja', userId: 'demo', amount: 680000, type: 'expense', partyTo: 'Superindo Mall', tags: ['Belanja', 'Dapur'], notes: 'Belanja mingguan kebutuhan rumah', transactionDate: fmtDate(1, '19:20:00.000Z'), isGuiltFree: false, guiltFreeOwner: null, clientCreatedAt: now, updatedAt: now, version: 1, isDeleted: false },
+          { id: 'tx-demo-5', workspaceId: 'ws-demo', accountId: 'acc-cash-istri', categoryId: 'sub-kopi', userId: 'demo', amount: 55000, type: 'expense', partyTo: 'Indomaret Point', tags: ['Jajan'], notes: 'Beli camilan & es krim sore', transactionDate: fmtDate(1, '16:10:00.000Z'), isGuiltFree: true, guiltFreeOwner: 'wife', clientCreatedAt: now, updatedAt: now, version: 1, isDeleted: false },
+
+          // 2 Hari Lalu (2 days ago)
+          { id: 'tx-demo-6', workspaceId: 'ws-demo', accountId: 'acc-bca', categoryId: 'sub-listrik', userId: 'demo', amount: 500000, type: 'expense', partyTo: 'PLN Mobile', tags: ['Listrik'], notes: 'Beli token listrik rumah', transactionDate: fmtDate(2, '10:00:00.000Z'), isGuiltFree: false, guiltFreeOwner: null, clientCreatedAt: now, updatedAt: now, version: 1, isDeleted: false },
+          { id: 'tx-demo-7', workspaceId: 'ws-demo', accountId: 'acc-mandiri', categoryId: 'sub-tol', userId: 'demo', amount: 150000, type: 'expense', partyTo: 'Gerbang Tol Dalam Kota', tags: ['Tol'], notes: 'Isi saldo e-Toll', transactionDate: fmtDate(2, '14:30:00.000Z'), isGuiltFree: false, guiltFreeOwner: null, clientCreatedAt: now, updatedAt: now, version: 1, isDeleted: false },
+
+          // 3 Hari Lalu (3 days ago)
+          { id: 'tx-demo-8', workspaceId: 'ws-demo', accountId: 'acc-gopay', categoryId: 'sub-bioskop', userId: 'demo', amount: 160000, type: 'expense', partyTo: 'XXI Cinema Grand Indonesia', tags: ['Hiburan', 'Date'], notes: 'Nonton film animasi bareng anak', transactionDate: fmtDate(3, '18:45:00.000Z'), isGuiltFree: false, guiltFreeOwner: null, clientCreatedAt: now, updatedAt: now, version: 1, isDeleted: false },
+          { id: 'tx-demo-9', workspaceId: 'ws-demo', accountId: 'acc-bca', categoryId: 'sub-les', userId: 'demo', amount: 120000, type: 'expense', partyTo: 'Gramedia Book Store', tags: ['Sekolah'], notes: 'Beli buku bacaan edukasi anak', transactionDate: fmtDate(3, '15:15:00.000Z'), isGuiltFree: false, guiltFreeOwner: null, clientCreatedAt: now, updatedAt: now, version: 1, isDeleted: false },
+
+          // 4 Hari Lalu (4 days ago)
+          { id: 'tx-demo-10', workspaceId: 'ws-demo', accountId: 'acc-cash-istri', categoryId: 'sub-sayur', userId: 'demo', amount: 185000, type: 'expense', partyTo: 'Pasar Segar Modern', tags: ['Dapur', 'Sayur'], notes: 'Beli sayuran segar & lauk seminggu', transactionDate: fmtDate(4, '07:30:00.000Z'), isGuiltFree: false, guiltFreeOwner: null, clientCreatedAt: now, updatedAt: now, version: 1, isDeleted: false },
+          { id: 'tx-demo-11', workspaceId: 'ws-demo', accountId: 'acc-bca', categoryId: 'sub-vitamin', userId: 'demo', amount: 140000, type: 'expense', partyTo: 'Apotek Kimia Farma', tags: ['Kesehatan'], notes: 'Vitamin C & minyak ikan anak', transactionDate: fmtDate(4, '11:20:00.000Z'), isGuiltFree: false, guiltFreeOwner: null, clientCreatedAt: now, updatedAt: now, version: 1, isDeleted: false },
+
+          // 5 Hari Lalu (5 days ago)
+          { id: 'tx-demo-12', workspaceId: 'ws-demo', accountId: 'acc-bca', targetAccountId: 'acc-gopay', categoryId: 'sub-belanja', userId: 'demo', amount: 500000, type: 'transfer', partyTo: 'GoPay', tags: ['Transfer'], notes: 'Top up saldo e-wallet dompet digital', transactionDate: fmtDate(5, '09:00:00.000Z'), isGuiltFree: false, guiltFreeOwner: null, clientCreatedAt: now, updatedAt: now, version: 1, isDeleted: false },
+          { id: 'tx-demo-13', workspaceId: 'ws-demo', accountId: 'acc-cash-suami', categoryId: 'sub-servis', userId: 'demo', amount: 220000, type: 'expense', partyTo: 'Bengkel Resmi Motor', tags: ['Perawatan'], notes: 'Ganti oli mesin & servis motor', transactionDate: fmtDate(5, '15:40:00.000Z'), isGuiltFree: false, guiltFreeOwner: null, clientCreatedAt: now, updatedAt: now, version: 1, isDeleted: false },
+
+          // 6 Hari Lalu (6 days ago)
+          { id: 'tx-demo-14', workspaceId: 'ws-demo', accountId: 'acc-gopay', categoryId: 'sub-delivery', userId: 'demo', amount: 135000, type: 'expense', partyTo: 'GrabFood', tags: ['Makan Malam'], notes: 'Pesan martabak manis & asin', transactionDate: fmtDate(6, '20:10:00.000Z'), isGuiltFree: false, guiltFreeOwner: null, clientCreatedAt: now, updatedAt: now, version: 1, isDeleted: false },
+          { id: 'tx-demo-15', workspaceId: 'ws-demo', accountId: 'acc-mandiri', categoryId: 'sub-bisnis-istri', userId: 'demo', amount: 1850000, type: 'income', partyFrom: 'Shopee & Marketplace', tags: ['Omset', 'Bisnis'], notes: 'Penarikan saldo hasil jualan busana muslim', transactionDate: fmtDate(6, '14:00:00.000Z'), isGuiltFree: false, guiltFreeOwner: null, clientCreatedAt: now, updatedAt: now, version: 1, isDeleted: false },
+
+          // Awal Bulan (Income & Pengeluaran Besar Rutin)
+          { id: 'tx-demo-16', workspaceId: 'ws-demo', accountId: 'acc-bca', categoryId: 'sub-gaji-suami', userId: 'demo', amount: 18500000, type: 'income', partyFrom: 'PT Teknologi Nusantara', tags: ['Gaji'], notes: 'Payroll Gaji Pokok Suami Bulan Ini', transactionDate: `${currentMonth}-01T08:00:00.000Z`, isGuiltFree: false, guiltFreeOwner: null, clientCreatedAt: now, updatedAt: now, version: 1, isDeleted: false },
+          { id: 'tx-demo-17', workspaceId: 'ws-demo', accountId: 'acc-mandiri', categoryId: 'sub-freelance', userId: 'demo', amount: 4500000, type: 'income', partyFrom: 'Klien Desain Studio', tags: ['Sampingan'], notes: 'Pelunasan fee pembuatan website & desain', transactionDate: `${currentMonth}-03T11:00:00.000Z`, isGuiltFree: false, guiltFreeOwner: null, clientCreatedAt: now, updatedAt: now, version: 1, isDeleted: false },
+          { id: 'tx-demo-18', workspaceId: 'ws-demo', accountId: 'acc-bca', categoryId: 'sub-spp', userId: 'demo', amount: 1200000, type: 'expense', partyTo: 'Sekolah Islam Terpadu', tags: ['Pendidikan', 'SPP'], notes: 'Pembayaran SPP dan uang kegiatan anak', transactionDate: `${currentMonth}-05T10:00:00.000Z`, isGuiltFree: false, guiltFreeOwner: null, clientCreatedAt: now, updatedAt: now, version: 1, isDeleted: false },
         ],
         budgets: [
-          { id: 'bdg-1', workspaceId: 'ws-demo', categoryId: 'cat-out-1', accountId: 'all', duration: '1_month', startDate: `${currentMonth}-01`, endDate: `${currentMonth}-31`, periodMonth: currentMonth, limitAmount: 3000000, rolloverAmount: 0, rolloverAction: 'rollover', updatedAt: now, isDeleted: false }
+          { id: 'bdg-pokok', workspaceId: 'ws-demo', categoryId: 'cat-pokok', accountId: 'all', duration: '1_month', startDate: `${currentMonth}-01`, endDate: `${currentMonth}-31`, periodMonth: currentMonth, limitAmount: 4500000, rolloverAmount: 250000, rolloverAction: 'rollover', updatedAt: now, isDeleted: false },
+          { id: 'bdg-makan', workspaceId: 'ws-demo', categoryId: 'cat-makan', accountId: 'all', duration: '1_month', startDate: `${currentMonth}-01`, endDate: `${currentMonth}-31`, periodMonth: currentMonth, limitAmount: 3000000, rolloverAmount: 0, rolloverAction: 'rollover', updatedAt: now, isDeleted: false },
+          { id: 'bdg-trans', workspaceId: 'ws-demo', categoryId: 'cat-trans', accountId: 'all', duration: '1_month', startDate: `${currentMonth}-01`, endDate: `${currentMonth}-31`, periodMonth: currentMonth, limitAmount: 1800000, rolloverAmount: 100000, rolloverAction: 'rollover', updatedAt: now, isDeleted: false },
+          { id: 'bdg-hiburan', workspaceId: 'ws-demo', categoryId: 'cat-hiburan', accountId: 'all', duration: '1_month', startDate: `${currentMonth}-01`, endDate: `${currentMonth}-31`, periodMonth: currentMonth, limitAmount: 1200000, rolloverAmount: 0, rolloverAction: 'rollover', updatedAt: now, isDeleted: false },
+          { id: 'bdg-pendidikan', workspaceId: 'ws-demo', categoryId: 'cat-pendidikan', accountId: 'all', duration: '1_month', startDate: `${currentMonth}-01`, endDate: `${currentMonth}-31`, periodMonth: currentMonth, limitAmount: 2500000, rolloverAmount: 0, rolloverAction: 'rollover', updatedAt: now, isDeleted: false },
+          { id: 'bdg-kesehatan', workspaceId: 'ws-demo', categoryId: 'cat-kesehatan', accountId: 'all', duration: '1_month', startDate: `${currentMonth}-01`, endDate: `${currentMonth}-31`, periodMonth: currentMonth, limitAmount: 1000000, rolloverAmount: 200000, rolloverAction: 'rollover', updatedAt: now, isDeleted: false },
         ],
         goals: [
-          { id: 'gl-1', workspaceId: 'ws-demo', name: 'Liburan Akhir Tahun', targetAmount: 10000000, currentAmount: 4500000, targetDate: '2026-12-25', icon: 'Plane', color: '#8B5CF6', isCompleted: false, updatedAt: now }
+          { id: 'gl-darurat', workspaceId: 'ws-demo', name: 'Dana Darurat 6 Bulan', targetAmount: 35000000, currentAmount: 28000000, targetDate: '2026-12-31', icon: 'Shield', color: '#10B981', notes: 'Alokasi 6x pengeluaran pokok keluarga', isCompleted: false, updatedAt: now },
+          { id: 'gl-liburan', workspaceId: 'ws-demo', name: 'Liburan Akhir Tahun ke Bali', targetAmount: 12000000, currentAmount: 8500000, targetDate: '2026-12-20', icon: 'Plane', color: '#3B82F6', notes: 'Tiket pesawat & penginapan sekeluarga', isCompleted: false, updatedAt: now },
+          { id: 'gl-renov', workspaceId: 'ws-demo', name: 'Renovasi Dapur & Taman Belakang', targetAmount: 25000000, currentAmount: 11200000, targetDate: '2027-03-31', icon: 'Home', color: '#F59E0B', notes: 'Beli keramik, kanopi & kitchen set', isCompleted: false, updatedAt: now },
+          { id: 'gl-pendidikan', workspaceId: 'ws-demo', name: 'Uang Pangkal SD Kakak', targetAmount: 18000000, currentAmount: 15000000, targetDate: '2027-06-15', icon: 'GraduationCap', color: '#8B5CF6', notes: 'Tabungan uang masuk sekolah dasar', isCompleted: false, updatedAt: now },
+          { id: 'gl-laptop', workspaceId: 'ws-demo', name: 'Laptop Kerja Baru Suami', targetAmount: 15000000, currentAmount: 9750000, targetDate: '2026-11-30', icon: 'Laptop', color: '#EC4899', notes: 'Upgrade perangkat kerja remote WFH', isCompleted: false, updatedAt: now },
+          { id: 'gl-qurban', workspaceId: 'ws-demo', name: 'Tabungan Qurban Sapi 1/7', targetAmount: 4200000, currentAmount: 4200000, targetDate: '2026-06-01', icon: 'Heart', color: '#14B8A6', notes: 'Target tercapai dan siap ditunaikan', isCompleted: true, updatedAt: now },
         ],
         bills: [
-          { id: 'bl-1', workspaceId: 'ws-demo', name: 'Internet WiFi', amount: 350000, categoryId: 'cat-out-2', accountId: 'acc-1', dueDay: 20, frequency: 'monthly', paidMonths: [], createdAt: now, updatedAt: now, isDeleted: false }
+          { id: 'bl-1', workspaceId: 'ws-demo', name: 'Internet WiFi IndiHome Fiber 50Mbps', amount: 385000, categoryId: 'sub-listrik', accountId: 'acc-bca', dueDay: 15, frequency: 'monthly', paidMonths: [], createdAt: now, updatedAt: now, isDeleted: false },
+          { id: 'bl-2', workspaceId: 'ws-demo', name: 'Listrik PLN Pascabayar', amount: 750000, categoryId: 'sub-listrik', accountId: 'acc-bca', dueDay: 20, frequency: 'monthly', paidMonths: [], createdAt: now, updatedAt: now, isDeleted: false },
+          { id: 'bl-3', workspaceId: 'ws-demo', name: 'BPJS Kesehatan Mandiri (4 Jiwa)', amount: 600000, categoryId: 'cat-kesehatan', accountId: 'acc-mandiri', dueDay: 10, frequency: 'monthly', paidMonths: [], createdAt: now, updatedAt: now, isDeleted: false },
+          { id: 'bl-4', workspaceId: 'ws-demo', name: 'Langganan Netflix & Spotify Family', amount: 236000, categoryId: 'sub-streaming', accountId: 'acc-gopay', dueDay: 25, frequency: 'monthly', paidMonths: [], createdAt: now, updatedAt: now, isDeleted: false },
+          { id: 'bl-5', workspaceId: 'ws-demo', name: 'Iuran Kebersihan & Keamanan Cluster', amount: 200000, categoryId: 'cat-pokok', accountId: 'acc-cash-suami', dueDay: 5, frequency: 'monthly', paidMonths: [], createdAt: now, updatedAt: now, isDeleted: false },
+          { id: 'bl-6', workspaceId: 'ws-demo', name: 'Iuran Air Bersih PAM / PDAM', amount: 165000, categoryId: 'sub-listrik', accountId: 'acc-bca', dueDay: 18, frequency: 'monthly', paidMonths: [], createdAt: now, updatedAt: now, isDeleted: false },
         ],
         debts: [
-          { id: 'dbt-1', workspaceId: 'ws-demo', type: 'debt', personName: 'Cicilan Kendaraan', phone: '', totalAmount: 5000000, paidAmount: 2000000, startDate: '2026-05-01', status: 'active', payments: [], createdAt: now, updatedAt: now, isDeleted: false }
+          {
+            id: 'dbt-1',
+            workspaceId: 'ws-demo',
+            type: 'debt',
+            personName: 'BCA Finance (Kredit Mobil)',
+            phone: '081299887766',
+            totalAmount: 18000000,
+            paidAmount: 9000000,
+            startDate: '2026-01-10',
+            dueDate: '2027-01-10',
+            status: 'active',
+            notes: 'Cicilan bulanan kendaraan keluarga',
+            payments: [
+              { id: 'pay-1', date: dayDateOnly(60), amount: 3000000, accountId: 'acc-bca', notes: 'Cicilan ke-8 via auto debit' },
+              { id: 'pay-2', date: dayDateOnly(30), amount: 3000000, accountId: 'acc-bca', notes: 'Cicilan ke-9 via auto debit' },
+              { id: 'pay-3', date: dayDateOnly(5), amount: 3000000, accountId: 'acc-bca', notes: 'Cicilan ke-10 via auto debit' },
+            ],
+            createdAt: now,
+            updatedAt: now,
+            isDeleted: false,
+          },
+          {
+            id: 'dbt-2',
+            workspaceId: 'ws-demo',
+            type: 'debt',
+            personName: 'Koperasi Mandiri Berkah',
+            phone: '082133445566',
+            totalAmount: 10000000,
+            paidAmount: 4000000,
+            startDate: '2026-04-15',
+            dueDate: '2026-12-15',
+            status: 'active',
+            notes: 'Pinjaman tanpa bunga renovasi',
+            payments: [
+              { id: 'pay-4', date: dayDateOnly(35), amount: 2000000, accountId: 'acc-mandiri', notes: 'Angsuran tahap 1' },
+              { id: 'pay-5', date: dayDateOnly(8), amount: 2000000, accountId: 'acc-mandiri', notes: 'Angsuran tahap 2' },
+            ],
+            createdAt: now,
+            updatedAt: now,
+            isDeleted: false,
+          },
+          {
+            id: 'dbt-3',
+            workspaceId: 'ws-demo',
+            type: 'debt',
+            personName: 'Toko Elektronik Makmur',
+            phone: '081122334455',
+            totalAmount: 4500000,
+            paidAmount: 4500000,
+            startDate: '2026-05-01',
+            dueDate: '2026-09-01',
+            status: 'settled',
+            notes: 'Cicilan kulkas 2 pintu (Lunas)',
+            payments: [
+              { id: 'pay-6', date: dayDateOnly(45), amount: 1500000, accountId: 'acc-bca', notes: 'Pelunasan terakhir' },
+            ],
+            createdAt: now,
+            updatedAt: now,
+            isDeleted: false,
+          },
+          {
+            id: 'dbt-4',
+            workspaceId: 'ws-demo',
+            type: 'receivable',
+            personName: 'Mas Dimas (Sepupu)',
+            phone: '085712345678',
+            totalAmount: 6000000,
+            paidAmount: 3500000,
+            startDate: '2026-09-10',
+            dueDate: '2026-11-20',
+            status: 'active',
+            notes: 'Talangan tiket liburan keluarga besar',
+            payments: [
+              { id: 'pay-7', date: dayDateOnly(12), amount: 3500000, accountId: 'acc-bca', notes: 'Transfer via BCA Mobile' },
+            ],
+            createdAt: now,
+            updatedAt: now,
+            isDeleted: false,
+          },
+          {
+            id: 'dbt-5',
+            workspaceId: 'ws-demo',
+            type: 'receivable',
+            personName: 'PT Teknologi Nusantara (Klaim Kantor)',
+            phone: '02155667788',
+            totalAmount: 2850000,
+            paidAmount: 0,
+            startDate: dayDateOnly(10),
+            dueDate: dayDateOnly(-15),
+            status: 'active',
+            notes: 'Reimbursement tiket pesawat & hotel dinas',
+            payments: [],
+            createdAt: now,
+            updatedAt: now,
+            isDeleted: false,
+          },
+          {
+            id: 'dbt-6',
+            workspaceId: 'ws-demo',
+            type: 'receivable',
+            personName: 'Bu Siti (Katering Arisan)',
+            phone: '081344556677',
+            totalAmount: 3000000,
+            paidAmount: 1000000,
+            startDate: '2026-08-20',
+            dueDate: '2026-12-20',
+            status: 'active',
+            notes: 'Talangan modal bahan katering',
+            payments: [
+              { id: 'pay-8', date: dayDateOnly(22), amount: 1000000, accountId: 'acc-mandiri', notes: 'Cicilan pengembalian ke-1' },
+            ],
+            createdAt: now,
+            updatedAt: now,
+            isDeleted: false,
+          },
         ],
         syncQueue: [],
       };

@@ -221,7 +221,7 @@ export const RecentTransactions: React.FC<RecentTransactionsProps> = ({
   };
 
   return (
-    <div className="space-y-4 max-w-4xl mx-auto w-full overflow-hidden">
+    <div className="space-y-4 max-w-4xl mx-auto w-full">
       {/* 1. RINGKASAN TOTAL MUTASI / TRANSAKSI */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 p-4 sm:p-5 shadow-2xs">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
@@ -410,12 +410,7 @@ export const RecentTransactions: React.FC<RecentTransactionsProps> = ({
                                 }}
                               />
                               <div
-                                className="fixed z-50 w-44 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 py-1.5 text-xs animate-in fade-in zoom-in-95 duration-100"
-                                style={{
-                                  top: 'auto',
-                                  left: 'auto',
-                                  transform: 'translate(-100%, 0.5rem)',
-                                }}
+                                className="absolute right-0 top-full mt-1.5 z-50 w-44 bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 py-1.5 text-xs animate-in fade-in zoom-in-95 duration-100"
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 <button

@@ -324,7 +324,9 @@ export const SavingsGoalsSection: React.FC<SavingsGoalsSectionProps> = ({
             return (
               <div
                 key={goal.id}
-                className="p-3 sm:p-3.5 hover:bg-slate-50/70 dark:hover:bg-slate-800/50 transition-colors group space-y-2.5"
+                className={`p-3 sm:p-3.5 hover:bg-slate-50/70 dark:hover:bg-slate-800/50 transition-colors group space-y-2.5 first:rounded-t-2xl sm:first:rounded-t-3xl last:rounded-b-2xl sm:last:rounded-b-3xl ${
+                  activeMenuId === goal.id ? 'relative z-40' : 'relative z-10'
+                }`}
               >
                 {/* Main Row: Icon + Title/Subtitle (Left) and Amounts + Actions (Right) */}
                 <div className="flex items-center justify-between gap-2.5 min-w-0">
@@ -423,62 +425,59 @@ export const SavingsGoalsSection: React.FC<SavingsGoalsSectionProps> = ({
                       </button>
 
                       {activeMenuId === goal.id && (
-                        <div
-                          className="fixed z-50 w-44 bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 py-1.5 text-xs animate-in fade-in"
-                          style={{
-                            top: 'auto',
-                            left: 'auto',
-                            transform: 'translate(-100%, 0.5rem)',
-                          }}
-                        >
+                        <>
                           <div
-                            className="fixed inset-0 z-[-1]"
+                            className="fixed inset-0 z-40"
                             onClick={() => setActiveMenuId(null)}
                           />
-                          <button
-                            type="button"
-                            onClick={() => handleOpenAction(goal, 'deposit')}
-                            className="w-full px-3 py-2 text-left text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 flex items-center gap-2"
+                          <div
+                            className="absolute right-0 top-full mt-1.5 z-50 w-44 bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 py-1.5 text-xs animate-in fade-in zoom-in-95 duration-100"
                           >
-                            <ArrowDownLeft className="w-3.5 h-3.5 stroke-[2.5]" />
-                            <span>Setor / Nabung</span>
-                          </button>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenAction(goal, 'deposit')}
+                              className="w-full px-3 py-2 text-left text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 flex items-center gap-2"
+                            >
+                              <ArrowDownLeft className="w-3.5 h-3.5 stroke-[2.5]" />
+                              <span>Setor / Nabung</span>
+                            </button>
 
-                          <button
-                            type="button"
-                            onClick={() => handleOpenAction(goal, 'withdraw')}
-                            disabled={goal.currentAmount <= 0}
-                            className="w-full px-3 py-2 text-left text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2 disabled:opacity-40"
-                          >
-                            <ArrowUpRight className="w-3.5 h-3.5" />
-                            <span>Tarik ke Rekening</span>
-                          </button>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenAction(goal, 'withdraw')}
+                              disabled={goal.currentAmount <= 0}
+                              className="w-full px-3 py-2 text-left text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2 disabled:opacity-40"
+                            >
+                              <ArrowUpRight className="w-3.5 h-3.5" />
+                              <span>Tarik ke Rekening</span>
+                            </button>
 
-                          <div className="my-1 border-t border-slate-100 dark:border-slate-800" />
+                            <div className="my-1 border-t border-slate-100 dark:border-slate-800" />
 
-                          <button
-                            type="button"
-                            onClick={() => handleOpenEdit(goal)}
-                            className="w-full px-3 py-2 text-left text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                            <span>Edit Target</span>
-                          </button>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEdit(goal)}
+                              className="w-full px-3 py-2 text-left text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                              <span>Edit Target</span>
+                            </button>
 
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (confirm(`Hapus target "${goal.name}"?`)) {
-                                onDeleteGoal(goal.id);
-                              }
-                              setActiveMenuId(null);
-                            }}
-                            className="w-full px-3 py-2 text-left text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center gap-2"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                            <span>Hapus Target</span>
-                          </button>
-                        </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (confirm(`Hapus target "${goal.name}"?`)) {
+                                  onDeleteGoal(goal.id);
+                                }
+                                setActiveMenuId(null);
+                              }}
+                              className="w-full px-3 py-2 text-left text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center gap-2"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>Hapus Target</span>
+                            </button>
+                          </div>
+                        </>
                       )}
                     </div>
                   </div>

@@ -14,6 +14,7 @@ import {
   CheckCircle2,
   Database,
   Loader2,
+  Sparkles,
 } from 'lucide-react';
 import { isSupabaseConfigured } from '../lib/supabase';
 
@@ -256,6 +257,34 @@ export const AuthLoginScreen: React.FC<AuthLoginScreenProps> = ({
                   </>
                 )}
               </button>
+
+              {/* Quick Demo Access (demo@catatin.com) */}
+              <div className="pt-1">
+                <button
+                  type="button"
+                  disabled={isLoading}
+                  onClick={async () => {
+                    setLoginEmail('demo@catatin.com');
+                    setLoginPassword('demo');
+                    setIsLoading(true);
+                    setErrorMsg(null);
+                    try {
+                      const res = await onLogin('demo@catatin.com', 'demo');
+                      if (!res.success) {
+                        setErrorMsg(res.message || 'Gagal masuk akun demo.');
+                      }
+                    } catch (err: any) {
+                      setErrorMsg(err?.message || 'Terjadi kesalahan saat masuk.');
+                    } finally {
+                      setIsLoading(false);
+                    }
+                  }}
+                  className="w-full py-2.5 px-3 bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 dark:from-slate-800 dark:to-indigo-950/40 dark:hover:from-slate-750 dark:hover:to-indigo-900/50 text-indigo-700 dark:text-indigo-300 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 border border-indigo-100 dark:border-indigo-900/50 shadow-2xs cursor-pointer"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400" />
+                  <span>Coba Akun Demo (demo@catatin.com)</span>
+                </button>
+              </div>
 
               {/* Tautan: Belum punya akun? Daftar sekarang */}
               <div className="text-center pt-2">

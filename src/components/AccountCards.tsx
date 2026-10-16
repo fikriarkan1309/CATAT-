@@ -106,7 +106,7 @@ export const AccountCards: React.FC<AccountCardsProps> = ({
     : [];
 
   return (
-    <div className="space-y-4 max-w-4xl mx-auto w-full overflow-hidden">
+    <div className="space-y-4 max-w-4xl mx-auto w-full">
       {/* 2. CARD TOTAL SALDO & ASET */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 p-4 sm:p-5 shadow-2xs">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
@@ -137,7 +137,7 @@ export const AccountCards: React.FC<AccountCardsProps> = ({
       </div>
 
       {/* 3. DAFTAR REKENING VERTIKAL */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xs divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xs divide-y divide-slate-100 dark:divide-slate-800">
         {activeAccounts.length === 0 ? (
           <div className="p-8 text-center">
             <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mb-3">
@@ -158,7 +158,9 @@ export const AccountCards: React.FC<AccountCardsProps> = ({
               <div
                 key={acc.id}
                 onClick={() => setSelectedAccountForDetail(acc)}
-                className="p-3.5 sm:p-4 flex items-center justify-between hover:bg-slate-50/80 dark:hover:bg-slate-800/60 transition-colors group cursor-pointer gap-2"
+                className={`p-3.5 sm:p-4 flex items-center justify-between hover:bg-slate-50/80 dark:hover:bg-slate-800/60 transition-colors group cursor-pointer gap-2 first:rounded-t-2xl sm:first:rounded-t-3xl last:rounded-b-2xl sm:last:rounded-b-3xl ${
+                  openDropdownId === acc.id ? 'relative z-40' : 'relative z-10'
+                }`}
               >
                 {/* Sisi Kiri: Ikon Berwarna + Nama & Nomor Akun */}
                 <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -237,18 +239,14 @@ export const AccountCards: React.FC<AccountCardsProps> = ({
                     </button>
 
                     {openDropdownId === acc.id && (
-                      <div
-                        className="fixed z-50 w-44 bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 py-1.5 text-xs animate-in fade-in"
-                        style={{
-                          top: 'auto',
-                          left: 'auto',
-                          transform: 'translate(-100%, 0.5rem)',
-                        }}
-                      >
+                      <>
                         <div
-                          className="fixed inset-0 z-[-1]"
+                          className="fixed inset-0 z-40"
                           onClick={() => setOpenDropdownId(null)}
                         />
+                        <div
+                          className="absolute right-0 top-full mt-1.5 z-50 w-44 bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 py-1.5 text-xs animate-in fade-in zoom-in-95 duration-100"
+                        >
                         <button
                           onClick={() => {
                             setOpenDropdownId(null);
@@ -328,7 +326,8 @@ export const AccountCards: React.FC<AccountCardsProps> = ({
                           <span>Hapus Rekening</span>
                         </button>
                       </div>
-                    )}
+                    </>
+                  )}
                   </div>
                 </div>
               </div>

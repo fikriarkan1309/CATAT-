@@ -124,7 +124,7 @@ export const BudgetRolloverSection: React.FC<BudgetRolloverSectionProps> = ({
   ];
 
   return (
-    <div className="space-y-3.5 w-full overflow-hidden">
+    <div className="space-y-3.5 w-full">
       {/* 1. PILIHAN KLASIFIKASI PERIODE */}
       <div className="relative group">
         <button
@@ -207,7 +207,9 @@ export const BudgetRolloverSection: React.FC<BudgetRolloverSectionProps> = ({
               return (
                 <div
                   key={b.id}
-                  className="p-3.5 sm:p-4 hover:bg-slate-50/70 dark:hover:bg-slate-800/60 transition-colors group space-y-3"
+                  className={`p-3.5 sm:p-4 hover:bg-slate-50/70 dark:hover:bg-slate-800/60 transition-colors group space-y-3 first:rounded-t-2xl sm:first:rounded-t-3xl last:rounded-b-2xl sm:last:rounded-b-3xl ${
+                    openDropdownId === b.id ? 'relative z-40' : 'relative z-10'
+                  }`}
                 >
                   {/* Baris Atas */}
                   <div className="flex items-center justify-between gap-3">
@@ -278,49 +280,46 @@ export const BudgetRolloverSection: React.FC<BudgetRolloverSectionProps> = ({
                         </button>
 
                         {openDropdownId === b.id && (
-                          <div
-                            className="fixed z-50 w-44 bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 py-1.5 text-xs animate-in fade-in"
-                            style={{
-                              top: 'auto',
-                              left: 'auto',
-                              transform: 'translate(-100%, 0.5rem)',
-                            }}
-                          >
+                          <>
                             <div
-                              className="fixed inset-0 z-[-1]"
+                              className="fixed inset-0 z-40"
                               onClick={() => setOpenDropdownId(null)}
                             />
-                            <button
-                              type="button"
-                              onClick={() => handleOpenRolloverModal(b)}
-                              className="w-full px-3 py-2 text-left text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2 font-medium"
+                            <div
+                              className="absolute right-0 top-full mt-1.5 z-50 w-44 bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 py-1.5 text-xs animate-in fade-in zoom-in-95 duration-100"
                             >
-                              <RotateCcw className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                              <span>Atur Rollover</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setOpenDropdownId(null);
-                                onEditBudget(b);
-                              }}
-                              className="w-full px-3 py-2 text-left text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2 font-medium"
-                            >
-                              <Edit2 className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
-                              <span>Edit Anggaran</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setOpenDropdownId(null);
-                                onDeleteBudget(b.id);
-                              }}
-                              className="w-full px-3 py-2 text-left text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center gap-2 font-medium"
-                            >
-                              <Trash2 className="w-3.5 h-3.5 text-rose-500" />
-                              <span>Hapus Anggaran</span>
-                            </button>
-                          </div>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenRolloverModal(b)}
+                                className="w-full px-3 py-2 text-left text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2 font-medium"
+                              >
+                                <RotateCcw className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                                <span>Atur Rollover</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setOpenDropdownId(null);
+                                  onEditBudget(b);
+                                }}
+                                className="w-full px-3 py-2 text-left text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2 font-medium"
+                              >
+                                <Edit2 className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
+                                <span>Edit Anggaran</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setOpenDropdownId(null);
+                                  onDeleteBudget(b.id);
+                                }}
+                                className="w-full px-3 py-2 text-left text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center gap-2 font-medium"
+                              >
+                                <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                                <span>Hapus Anggaran</span>
+                              </button>
+                            </div>
+                          </>
                         )}
                       </div>
                     </div>

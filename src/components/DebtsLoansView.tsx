@@ -200,7 +200,7 @@ export const DebtsLoansView: React.FC<DebtsLoansViewProps> = ({
   };
 
   return (
-    <div className="space-y-3.5 max-w-4xl mx-auto w-full overflow-hidden">
+    <div className="space-y-3.5 max-w-4xl mx-auto w-full">
       {/* 1. TOP CARD SUMMARY (Ramping & Responsive, Tidak Melebihi Layar HP) */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 p-3.5 sm:p-5 shadow-2xs">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
@@ -362,7 +362,9 @@ export const DebtsLoansView: React.FC<DebtsLoansViewProps> = ({
             return (
               <div
                 key={item.id}
-                className="p-3 sm:p-3.5 hover:bg-slate-50/70 dark:hover:bg-slate-800/50 transition-colors group space-y-2.5"
+                className={`p-3 sm:p-3.5 hover:bg-slate-50/70 dark:hover:bg-slate-800/50 transition-colors group space-y-2.5 first:rounded-t-2xl sm:first:rounded-t-3xl last:rounded-b-2xl sm:last:rounded-b-3xl ${
+                  activeMenuId === item.id ? 'relative z-40' : 'relative z-10'
+                }`}
               >
                 {/* Main Row: Icon + Name (Left) and Amount + Actions (Right) */}
                 <div className="flex items-center justify-between gap-2.5 min-w-0">
@@ -472,68 +474,65 @@ export const DebtsLoansView: React.FC<DebtsLoansViewProps> = ({
                       </button>
 
                       {activeMenuId === item.id && (
-                        <div
-                          className="fixed z-50 w-44 bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 py-1.5 text-xs animate-in fade-in"
-                          style={{
-                            top: 'auto',
-                            left: 'auto',
-                            transform: 'translate(-100%, 0.5rem)',
-                          }}
-                        >
+                        <>
                           <div
-                            className="fixed inset-0 z-[-1]"
+                            className="fixed inset-0 z-40"
                             onClick={() => setActiveMenuId(null)}
                           />
-                          {!isSettled && (
+                          <div
+                            className="absolute right-0 top-full mt-1.5 z-50 w-44 bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 py-1.5 text-xs animate-in fade-in zoom-in-95 duration-100"
+                          >
+                            {!isSettled && (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenPayModal(item)}
+                                className="w-full px-3 py-2 text-left text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 flex items-center gap-2"
+                              >
+                                <CreditCard className="w-3.5 h-3.5" />
+                                <span>{item.type === 'debt' ? 'Bayar Cicilan' : 'Terima Pembayaran'}</span>
+                              </button>
+                            )}
+
+                            {hasPayments && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setExpandedHistoryId(isExpanded ? null : item.id);
+                                  setActiveMenuId(null);
+                                }}
+                                className="w-full px-3 py-2 text-left text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 flex items-center gap-2"
+                              >
+                                <History className="w-3.5 h-3.5" />
+                                <span>{isExpanded ? 'Tutup Riwayat' : 'Lihat Riwayat Cicilan'}</span>
+                              </button>
+                            )}
+
+                            <div className="my-1 border-t border-slate-100 dark:border-slate-800" />
+
                             <button
                               type="button"
-                              onClick={() => handleOpenPayModal(item)}
-                              className="w-full px-3 py-2 text-left text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 flex items-center gap-2"
+                              onClick={() => handleOpenEdit(item)}
+                              className="w-full px-3 py-2 text-left text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2"
                             >
-                              <CreditCard className="w-3.5 h-3.5" />
-                              <span>{item.type === 'debt' ? 'Bayar Cicilan' : 'Terima Pembayaran'}</span>
+                              <Edit2 className="w-3.5 h-3.5" />
+                              <span>Edit Catatan</span>
                             </button>
-                          )}
 
-                          {hasPayments && (
                             <button
                               type="button"
                               onClick={() => {
-                                setExpandedHistoryId(isExpanded ? null : item.id);
+                                if (confirm(`Hapus catatan untuk "${item.personName}"?`)) {
+                                  onDeleteDebt(item.id);
+                                }
                                 setActiveMenuId(null);
                               }}
-                              className="w-full px-3 py-2 text-left text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 flex items-center gap-2"
+                              className="w-full px-3 py-2 text-left text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center gap-2"
                             >
-                              <History className="w-3.5 h-3.5" />
-                              <span>{isExpanded ? 'Tutup Riwayat' : 'Lihat Riwayat Cicilan'}</span>
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>Hapus Catatan</span>
                             </button>
-                          )}
-
-                          <div className="my-1 border-t border-slate-100 dark:border-slate-800" />
-
-                          <button
-                            type="button"
-                            onClick={() => handleOpenEdit(item)}
-                            className="w-full px-3 py-2 text-left text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                            <span>Edit Catatan</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (confirm(`Hapus catatan untuk "${item.personName}"?`)) {
-                                onDeleteDebt(item.id);
-                              }
-                              setActiveMenuId(null);
-                            }}
-                            className="w-full px-3 py-2 text-left text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center gap-2"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                            <span>Hapus Catatan</span>
-                          </button>
-                        </div>
+                          </div>
+                        </>
                       )}
                     </div>
                   </div>
