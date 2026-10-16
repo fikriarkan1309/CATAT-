@@ -400,12 +400,8 @@ class OfflineStorageEngine {
         },
         isSimulatedOffline: true, // Cegah sinkronisasi ke Supabase
         accounts: [
-          { id: 'acc-1', workspaceId: 'ws-demo', name: 'BCA Utama (Suami)', type: 'bank', currency: 'IDR', balance: 12500000, initialBalance: 10000000, color: '#0066AE', isArchived: false, updatedAt: now },
-          { id: 'acc-2', workspaceId: 'ws-demo', name: 'Mandiri (Istri)', type: 'bank', currency: 'IDR', balance: 8400000, initialBalance: 6000000, color: '#FDBA12', isArchived: false, updatedAt: now },
-          { id: 'acc-3', workspaceId: 'ws-demo', name: 'Dompet Suami', type: 'cash', currency: 'IDR', balance: 750000, initialBalance: 500000, color: '#475569', isArchived: false, updatedAt: now },
-          { id: 'acc-4', workspaceId: 'ws-demo', name: 'Dompet Istri', type: 'cash', currency: 'IDR', balance: 1200000, initialBalance: 1000000, color: '#EC4899', isArchived: false, updatedAt: now },
-          { id: 'acc-5', workspaceId: 'ws-demo', name: 'GoPay / OVO', type: 'wallet', currency: 'IDR', balance: 450000, initialBalance: 200000, color: '#00AED6', isArchived: false, updatedAt: now },
-          { id: 'acc-6', workspaceId: 'ws-demo', name: 'Bibit / Reksadana', type: 'investment', currency: 'IDR', balance: 35000000, initialBalance: 30000000, color: '#10B981', isArchived: false, updatedAt: now },
+          { id: 'acc-1', workspaceId: 'ws-demo', name: 'Rekening BCA', type: 'bank', currency: 'IDR', balance: 12500000, initialBalance: 10000000, color: '#2563EB', isArchived: false, updatedAt: now },
+          { id: 'acc-2', workspaceId: 'ws-demo', name: 'Dompet Istri', type: 'cash', currency: 'IDR', balance: 3200000, initialBalance: 2000000, color: '#10B981', isArchived: false, updatedAt: now }
         ],
         categories: [
           { id: 'cat-in', workspaceId: 'ws-demo', parentId: null, name: 'Gaji Bulanan', icon: 'Wallet', color: '#10B981', type: 'income', isSystem: true, isDeleted: false },
