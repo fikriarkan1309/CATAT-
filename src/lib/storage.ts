@@ -856,10 +856,25 @@ class OfflineStorageEngine {
     }
     this.persist();
     this.state.isAuthenticated = false;
-    this.state.currentUserEmail = '';
     try {
+      if (this.state.currentUserEmail) {
+        localStorage.removeItem(`keluarga_fin_state_${this.state.currentUserEmail}`);
+      }
       localStorage.removeItem('keluarga_fin_current_user');
     } catch {}
+    this.state = {
+      ...this.state,
+      currentUserEmail: '',
+      accounts: INITIAL_ACCOUNTS,
+      categories: INITIAL_CATEGORIES,
+      transactions: INITIAL_TRANSACTIONS,
+      budgets: INITIAL_BUDGETS,
+      goals: INITIAL_GOALS,
+      bills: INITIAL_BILLS,
+      debts: INITIAL_DEBTS,
+      syncQueue: [],
+      guiltFree: INITIAL_GUILT_FREE,
+    };
     this.persist();
   }
 
