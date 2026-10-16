@@ -182,16 +182,9 @@ export const Header: React.FC<HeaderProps> = ({
             onClick={() => onSelectTab('home')}
             className="flex items-center gap-2 text-left group"
           >
-            <div className="w-7 h-7 rounded-lg bg-slate-900 dark:bg-indigo-600 text-white flex items-center justify-center font-black text-xs shadow-xs group-hover:scale-105 transition-transform">
-              C!
-            </div>
-            <div>
-              <span className="font-extrabold text-slate-900 dark:text-white text-sm tracking-tight leading-none">
-                CATAT!
-              </span>
-              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium ml-2 hidden sm:inline">
-                Buku Kas & Anggaran
-              </span>
+            <div className="flex items-center gap-3">
+              <img src="/logo.png" alt="Catatin!" className="w-8 h-8 rounded-lg" />
+              <span className="font-bold text-lg text-gray-900 hidden sm:block">Catatin!</span>
             </div>
           </button>
 

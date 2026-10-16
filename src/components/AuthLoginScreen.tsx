@@ -129,12 +129,14 @@ export const AuthLoginScreen: React.FC<AuthLoginScreenProps> = ({
       {/* Top Header Bar */}
       <div className="max-w-md w-full mx-auto flex items-center justify-between py-2">
         <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-2xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 flex items-center justify-center font-black text-sm tracking-tighter shadow-md">
-            KF
-          </div>
+          <img 
+            src="/logo.png" 
+            alt="Catatin!" 
+            className="w-9 h-9 rounded-2xl shadow-md object-cover" 
+          />
           <div>
             <span className="font-extrabold text-sm tracking-tight text-slate-900 dark:text-white block leading-none">
-              KeluargaFin
+              Catatin!
             </span>
             <span className="text-[10px] text-slate-400 font-medium">Buku Kas Keuangan Keluarga</span>
           </div>
@@ -153,8 +155,14 @@ export const AuthLoginScreen: React.FC<AuthLoginScreenProps> = ({
       {/* Main Authentication Card */}
       <div className="max-w-md w-full mx-auto my-auto py-4">
         <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 shadow-xl border border-slate-200 dark:border-slate-800 space-y-5 animate-in fade-in zoom-in-95 duration-150">
+          
           {/* Header Card Title */}
-          <div className="text-center space-y-1">
+          <div className="flex flex-col items-center justify-center text-center space-y-1">
+            <img 
+              src="/logo.png" 
+              alt="Logo Catatin!" 
+              className="w-20 h-20 mb-3 rounded-2xl shadow-sm"
+            />
             <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight">
               {mode === 'login' ? 'Masuk ke Akun' : 'Daftar Akun Baru'}
             </h1>
@@ -372,21 +380,6 @@ export const AuthLoginScreen: React.FC<AuthLoginScreenProps> = ({
             </form>
           )}
 
-          {/* Supabase Reset Option (only visible if configured) */}
-          <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-2">
-            {isSupabaseActive && (
-              <button
-                type="button"
-                onClick={() => {
-                  import('../lib/supabase').then(m => m.clearSupabaseConfig());
-                  window.location.reload();
-                }}
-                className="w-full py-2 px-3 rounded-xl border border-dashed border-rose-300 dark:border-rose-900 text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950 transition-colors flex items-center justify-center gap-2"
-              >
-                <span>Reset Koneksi Database (Supabase Error?)</span>
-              </button>
-            )}
-          </div>
         </div>
 
         {/* Multi-Device Feature Info Banner */}
@@ -403,7 +396,7 @@ export const AuthLoginScreen: React.FC<AuthLoginScreenProps> = ({
 
       {/* Footer */}
       <div className="text-center text-[10px] text-slate-400 py-2">
-        KeluargaFin &copy; 2026 · Buku Kas Keuangan Terintegrasi Multi-Device
+        Catatin! &copy; 2026 · Buku Kas Keuangan Terintegrasi Multi-Device
       </div>
     </div>
   );

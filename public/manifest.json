@@ -1,0 +1,17 @@
+{
+  "name": "Catatin!",
+  "short_name": "Catatin!",
+  "description": "Aplikasi pencatatan keuangan keluarga offline-first",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2563EB",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
