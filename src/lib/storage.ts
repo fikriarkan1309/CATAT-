@@ -382,7 +382,7 @@ class OfflineStorageEngine {
     const cleanEmail = email.trim().toLowerCase();
     const cleanPassword = password || 'password123';
     // =========================================================
-    // BLOK MODE DEMO (EASTER EGG - TANPA TOMBOL) - FULL POPULATED
+    // BLOK MODE DEMO (EASTER EGG - TANPA TOMBOL)
     // =========================================================
     if (cleanEmail === 'demo@catatin.com') {
       const now = new Date().toISOString();
@@ -464,10 +464,6 @@ class OfflineStorageEngine {
           { id: 'dbt-2', workspaceId: 'ws-demo', type: 'receivable', personName: 'Pinjaman Budi (Teman)', phone: '08123456789', totalAmount: 2000000, paidAmount: 500000, startDate: '2026-08-15', dueDate: '2026-12-01', notes: 'Janji dicicil tiap gajian', status: 'active', payments: [], createdAt: now, updatedAt: now, isDeleted: false },
           { id: 'dbt-3', workspaceId: 'ws-demo', type: 'debt', personName: 'Paylater Tokopedia', phone: '', totalAmount: 1500000, paidAmount: 1500000, startDate: '2026-09-01', dueDate: '2026-10-01', status: 'settled', payments: [], createdAt: now, updatedAt: now, isDeleted: false }
         ],
-        guiltFree: {
-          husband: { limit: 1500000, spent: 190000 },
-          wife: { limit: 1500000, spent: 350000 }
-        },
         syncQueue: [],
       };
       
