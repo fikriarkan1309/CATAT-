@@ -26,8 +26,14 @@ export function getSupabaseConfig(): SupabaseConfig {
   }
 
   // Fallback to Vite environment variables or user provided default credentials
-  const envUrl = import.meta.env.VITE_SUPABASE_URL;
-  const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  let envUrl: string | undefined;
+  let envKey: string | undefined;
+  try {
+    if (typeof import.meta !== 'undefined' && import.meta.env) {
+      envUrl = import.meta.env.VITE_SUPABASE_URL;
+      envKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    }
+  } catch {}
 
   const defaultUrl = 'https://zhytgblrjzhfajsbfreh.supabase.co';
   const defaultKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpoeXRnYmxyanpoZmFqc2JmcmVoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NjcwMzgsImV4cCI6MjEwNzU0MzAzOH0.aEFthPU4-E6W0xsPFFwGtxwTnb95IWzF4cm_gkUFLn4';

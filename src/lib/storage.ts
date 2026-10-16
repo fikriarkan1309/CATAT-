@@ -57,6 +57,8 @@ class OfflineStorageEngine {
   private state: StorageState;
   private listeners: Set<() => void> = new Set();
   private isSyncing = false;
+  private realtimeChannel: any = null;
+  private heartbeatTimer: any = null;
 
   constructor() {
     this.state = {
@@ -91,7 +93,21 @@ class OfflineStorageEngine {
     if (supabase && isSupabaseConfigured() && this.isOnline()) {
       await this.triggerSync();
       await this.pullFromSupabase(supabase, userId);
+      this.setupRealtimeSubscription(userId);
     }
+  }
+
+  public async syncAndPullActiveUser() {
+    const supabase = getSupabaseClient();
+    if (!supabase || !isSupabaseConfigured() || !this.isOnline()) return;
+
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const userId = sessionData?.session?.user?.id;
+      if (userId) {
+        await this.syncAndPull(userId);
+      }
+    } catch {}
   }
 
   private async init() {
@@ -130,9 +146,11 @@ class OfflineStorageEngine {
               },
               isAuthenticated: true,
               currentUserEmail: activeEmail,
+              isSimulatedOffline: false,
               bills: Array.isArray(parsed.bills) ? parsed.bills : INITIAL_BILLS,
               debts: Array.isArray(parsed.debts) ? parsed.debts : INITIAL_DEBTS,
             };
+            this.recalculateAccountBalances();
           } catch {
             // fallback
           }
@@ -189,16 +207,26 @@ class OfflineStorageEngine {
           this.notify();
         });
 
+        // Event saat kembali membuka tab / aplikasi (mendukung iPad / iPhone Safari)
         window.addEventListener('focus', () => {
-          const supabase = getSupabaseClient();
-          if (supabase && isSupabaseConfigured() && this.isOnline()) {
-            supabase.auth.getUser().then(({ data }) => {
-              if (data?.user) {
-                this.syncAndPull(data.user.id);
-              }
-            });
+          this.syncAndPullActiveUser();
+        });
+
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') {
+            this.syncAndPullActiveUser();
           }
         });
+
+        // Heartbeat sinkronisasi latar belakang otomatis setiap 6 detik
+        if (this.heartbeatTimer) {
+          clearInterval(this.heartbeatTimer);
+        }
+        this.heartbeatTimer = setInterval(() => {
+          if (this.isOnline() && !this.isSyncing) {
+            this.syncAndPullActiveUser();
+          }
+        }, 6000);
 
         const supabase = getSupabaseClient();
         if (supabase && isSupabaseConfigured()) {
@@ -228,6 +256,8 @@ class OfflineStorageEngine {
               this.state.isAuthenticated = true;
               this.state.currentUserEmail = session.user.email || '';
               this.persist();
+              this.setupRealtimeSubscription(session.user.id);
+              this.syncAndPull(session.user.id);
             }
           });
         }
@@ -418,7 +448,7 @@ class OfflineStorageEngine {
           password: 'demo',
           createdAt: now,
         },
-        isSimulatedOffline: true, // Cegah sinkronisasi ke Supabase
+        isSimulatedOffline: false,
         accounts: [
           { id: 'acc-bca', workspaceId: 'ws-demo', name: 'BCA Rekening Utama', type: 'bank', currency: 'IDR', accountNumber: '8830192831', balance: 14850000, initialBalance: 10000000, color: '#2563EB', isArchived: false, updatedAt: now },
           { id: 'acc-mandiri', workspaceId: 'ws-demo', name: 'Bank Mandiri Tabungan', type: 'bank', currency: 'IDR', accountNumber: '137001928310', balance: 28500000, initialBalance: 25000000, color: '#0284C7', isArchived: false, updatedAt: now },
@@ -926,6 +956,7 @@ class OfflineStorageEngine {
       });
     }
 
+    this.recalculateAccountBalances();
     this.persist();
     if (this.isOnline()) this.triggerSync();
   }
@@ -1018,6 +1049,7 @@ class OfflineStorageEngine {
     };
     this.state.syncQueue.push(queueItem);
 
+    this.recalculateAccountBalances();
     this.persist();
     if (this.isOnline()) {
       this.triggerSync();
@@ -1069,6 +1101,7 @@ class OfflineStorageEngine {
       retryCount: 0,
     });
 
+    this.recalculateAccountBalances();
     this.persist();
     if (this.isOnline()) this.triggerSync();
   }
@@ -1107,6 +1140,7 @@ class OfflineStorageEngine {
     };
     this.state.syncQueue.push(queueItem);
 
+    this.recalculateAccountBalances();
     this.persist();
     if (this.isOnline()) {
       this.triggerSync();
@@ -1119,32 +1153,114 @@ class OfflineStorageEngine {
     type: 'expense' | 'income' | 'transfer',
     targetAccountId?: string | null
   ) {
+    const now = new Date().toISOString();
     this.state.accounts = this.state.accounts.map((acc) => {
       if (acc.id === sourceAccountId) {
         if (type === 'expense' || type === 'transfer') {
-          return { ...acc, balance: acc.balance - amount, updatedAt: new Date().toISOString() };
+          return { ...acc, balance: acc.balance - amount, updatedAt: now };
         } else if (type === 'income') {
-          return { ...acc, balance: acc.balance + amount, updatedAt: new Date().toISOString() };
+          return { ...acc, balance: acc.balance + amount, updatedAt: now };
         }
       }
       if (type === 'transfer' && targetAccountId && acc.id === targetAccountId) {
-        return { ...acc, balance: acc.balance + amount, updatedAt: new Date().toISOString() };
+        return { ...acc, balance: acc.balance + amount, updatedAt: now };
       }
       return acc;
     });
+
+    const sourceAcc = this.state.accounts.find((a) => a.id === sourceAccountId);
+    if (sourceAcc) this.queueAccountUpsert(sourceAcc);
+    if (targetAccountId) {
+      const targetAcc = this.state.accounts.find((a) => a.id === targetAccountId);
+      if (targetAcc) this.queueAccountUpsert(targetAcc);
+    }
   }
 
   private revertBalance(accountId: string, amount: number, direction: 'expense' | 'income') {
+    const now = new Date().toISOString();
     this.state.accounts = this.state.accounts.map((acc) => {
       if (acc.id === accountId) {
         return {
           ...acc,
           balance: direction === 'income' ? acc.balance + amount : acc.balance - amount,
-          updatedAt: new Date().toISOString(),
+          updatedAt: now,
         };
       }
       return acc;
     });
+
+    const acc = this.state.accounts.find((a) => a.id === accountId);
+    if (acc) this.queueAccountUpsert(acc);
+  }
+
+  private queueAccountUpsert(acc: Account) {
+    const existingIndex = this.state.syncQueue.findIndex(
+      (q) => q.entityTable === 'accounts' && q.entityId === acc.id && (q.status === 'pending' || q.status === 'syncing')
+    );
+    const now = new Date().toISOString();
+    if (existingIndex >= 0) {
+      this.state.syncQueue[existingIndex] = {
+        ...this.state.syncQueue[existingIndex],
+        payload: { ...acc },
+        clientTimestamp: now,
+        status: 'pending',
+      };
+    } else {
+      this.state.syncQueue.push({
+        id: this.generateUUID(),
+        entityTable: 'accounts',
+        entityId: acc.id,
+        operation: 'UPDATE',
+        payload: { ...acc },
+        clientTimestamp: now,
+        status: 'pending',
+        retryCount: 0,
+      });
+    }
+  }
+
+  public recalculateAccountBalances() {
+    const nonDeletedTxns = this.state.transactions.filter((t) => !t.isDeleted);
+    
+    let changed = false;
+    this.state.accounts = this.state.accounts.map((acc) => {
+      let netDelta = 0;
+      for (const t of nonDeletedTxns) {
+        const amt = Number(t.amount) || 0;
+        if (t.accountId === acc.id) {
+          if (t.type === 'expense') {
+            netDelta -= amt;
+          } else if (t.type === 'income') {
+            netDelta += amt;
+          } else if (t.type === 'transfer') {
+            netDelta -= amt;
+          }
+        }
+        if (t.type === 'transfer' && t.targetAccountId === acc.id) {
+          netDelta += amt;
+        }
+      }
+
+      const initial = Number(acc.initialBalance) || 0;
+      const accurateBalance = initial + netDelta;
+
+      if (acc.balance !== accurateBalance) {
+        changed = true;
+        const updated = {
+          ...acc,
+          balance: accurateBalance,
+          updatedAt: new Date().toISOString(),
+        };
+        this.queueAccountUpsert(updated);
+        return updated;
+      }
+      return acc;
+    });
+
+    if (changed) {
+      this.persist();
+      this.notify();
+    }
   }
 
   // --- CATEGORIES MANAGEMENT ---
@@ -1997,11 +2113,12 @@ class OfflineStorageEngine {
         supabase.from('debts').select('*').eq('user_id', userId),
       ]);
 
-      const pendingIds = new Set(
-        this.state.syncQueue
-          .filter((q) => q.status === 'pending' || q.status === 'syncing')
-          .map((q) => q.entityId)
-      );
+      const pendingMap = new Map<string, SyncQueueItem>();
+      for (const q of this.state.syncQueue) {
+        if (q.status === 'pending' || q.status === 'syncing') {
+          pendingMap.set(q.entityId, q);
+        }
+      }
 
       // 1. ACCOUNTS MERGE
       if (accRes.data) {
@@ -2015,13 +2132,30 @@ class OfflineStorageEngine {
           balance: Number(r.balance),
           initialBalance: Number(r.initial_balance),
           color: r.color,
-          isArchived: r.is_archived,
-          isDeleted: r.is_deleted,
+          isArchived: Boolean(r.is_archived),
+          isDeleted: Boolean(r.is_deleted),
           updatedAt: r.updated_at,
-        }));
-        const remoteIds = new Set(remoteAccs.map((a) => a.id));
-        const unsyncedLocal = this.state.accounts.filter((a) => pendingIds.has(a.id) && !remoteIds.has(a.id));
-        this.state.accounts = [...remoteAccs, ...unsyncedLocal];
+        })).filter((a: Account) => !a.isDeleted);
+
+        const accMap = new Map<string, Account>();
+        for (const ra of remoteAccs) {
+          const pending = pendingMap.get(ra.id);
+          if (pending && pending.operation === 'DELETE') continue;
+          if (pending && (pending.operation === 'UPDATE' || pending.operation === 'INSERT')) {
+            accMap.set(ra.id, pending.payload as Account);
+          } else {
+            accMap.set(ra.id, ra);
+          }
+        }
+        for (const la of this.state.accounts) {
+          if (la.isDeleted) continue;
+          const pending = pendingMap.get(la.id);
+          if (pending && pending.operation === 'DELETE') continue;
+          if (!accMap.has(la.id) || pending) {
+            accMap.set(la.id, la);
+          }
+        }
+        this.state.accounts = Array.from(accMap.values());
       }
 
       // 2. CATEGORIES MERGE
@@ -2034,12 +2168,29 @@ class OfflineStorageEngine {
           icon: r.icon,
           color: r.color,
           type: r.type,
-          isSystem: r.is_system,
-          isDeleted: r.is_deleted,
-        }));
-        const remoteIds = new Set(remoteCats.map((c) => c.id));
-        const unsyncedLocal = this.state.categories.filter((c) => pendingIds.has(c.id) && !remoteIds.has(c.id));
-        this.state.categories = [...remoteCats, ...unsyncedLocal];
+          isSystem: Boolean(r.is_system),
+          isDeleted: Boolean(r.is_deleted),
+        })).filter((c: Category) => !c.isDeleted);
+
+        const catMap = new Map<string, Category>();
+        for (const rc of remoteCats) {
+          const pending = pendingMap.get(rc.id);
+          if (pending && pending.operation === 'DELETE') continue;
+          if (pending && (pending.operation === 'UPDATE' || pending.operation === 'INSERT')) {
+            catMap.set(rc.id, pending.payload as Category);
+          } else {
+            catMap.set(rc.id, rc);
+          }
+        }
+        for (const lc of this.state.categories) {
+          if (lc.isDeleted) continue;
+          const pending = pendingMap.get(lc.id);
+          if (pending && pending.operation === 'DELETE') continue;
+          if (!catMap.has(lc.id) || pending) {
+            catMap.set(lc.id, lc);
+          }
+        }
+        this.state.categories = Array.from(catMap.values());
       }
 
       // 3. TRANSACTIONS MERGE
@@ -2053,21 +2204,38 @@ class OfflineStorageEngine {
           amount: Number(r.amount),
           type: r.type,
           targetAccountId: r.target_account_id,
-          partyFrom: r.party_from,
-          partyTo: r.party_to,
+          partyFrom: r.party_from || '',
+          partyTo: r.party_to || '',
           tags: r.tags || [],
           notes: r.notes || '',
           transactionDate: r.transaction_date,
-          isGuiltFree: r.is_guilt_free,
+          isGuiltFree: Boolean(r.is_guilt_free),
           guiltFreeOwner: r.guilt_free_owner,
           clientCreatedAt: r.client_created_at || r.updated_at,
           updatedAt: r.updated_at,
           version: r.version || 1,
-          isDeleted: r.is_deleted,
-        }));
-        const remoteIds = new Set(remoteTxs.map((t) => t.id));
-        const unsyncedLocal = this.state.transactions.filter((t) => pendingIds.has(t.id) && !remoteIds.has(t.id));
-        this.state.transactions = [...remoteTxs, ...unsyncedLocal].sort(
+          isDeleted: Boolean(r.is_deleted),
+        })).filter((t: Transaction) => !t.isDeleted);
+
+        const txMap = new Map<string, Transaction>();
+        for (const rt of remoteTxs) {
+          const pending = pendingMap.get(rt.id);
+          if (pending && pending.operation === 'DELETE') continue;
+          if (pending && (pending.operation === 'UPDATE' || pending.operation === 'INSERT')) {
+            txMap.set(rt.id, pending.payload as Transaction);
+          } else {
+            txMap.set(rt.id, rt);
+          }
+        }
+        for (const lt of this.state.transactions) {
+          if (lt.isDeleted) continue;
+          const pending = pendingMap.get(lt.id);
+          if (pending && pending.operation === 'DELETE') continue;
+          if (!txMap.has(lt.id) || pending) {
+            txMap.set(lt.id, lt);
+          }
+        }
+        this.state.transactions = Array.from(txMap.values()).sort(
           (a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime()
         );
       }
@@ -2087,11 +2255,28 @@ class OfflineStorageEngine {
           rolloverAmount: Number(r.rollover_amount),
           rolloverAction: r.rollover_action,
           updatedAt: r.updated_at,
-          isDeleted: r.is_deleted,
-        }));
-        const remoteIds = new Set(remoteBudgets.map((b) => b.id));
-        const unsyncedLocal = this.state.budgets.filter((b) => pendingIds.has(b.id) && !remoteIds.has(b.id));
-        this.state.budgets = [...remoteBudgets, ...unsyncedLocal];
+          isDeleted: Boolean(r.is_deleted),
+        })).filter((b: Budget) => !b.isDeleted);
+
+        const bMap = new Map<string, Budget>();
+        for (const rb of remoteBudgets) {
+          const pending = pendingMap.get(rb.id);
+          if (pending && pending.operation === 'DELETE') continue;
+          if (pending && (pending.operation === 'UPDATE' || pending.operation === 'INSERT')) {
+            bMap.set(rb.id, pending.payload as Budget);
+          } else {
+            bMap.set(rb.id, rb);
+          }
+        }
+        for (const lb of this.state.budgets) {
+          if (lb.isDeleted) continue;
+          const pending = pendingMap.get(lb.id);
+          if (pending && pending.operation === 'DELETE') continue;
+          if (!bMap.has(lb.id) || pending) {
+            bMap.set(lb.id, lb);
+          }
+        }
+        this.state.budgets = Array.from(bMap.values());
       }
 
       // 5. GOALS MERGE
@@ -2106,12 +2291,28 @@ class OfflineStorageEngine {
           icon: r.icon,
           color: r.color,
           notes: r.notes,
-          isCompleted: r.is_completed,
+          isCompleted: Boolean(r.is_completed),
           updatedAt: r.updated_at,
         }));
-        const remoteIds = new Set(remoteGoals.map((g) => g.id));
-        const unsyncedLocal = this.state.goals.filter((g) => pendingIds.has(g.id) && !remoteIds.has(g.id));
-        this.state.goals = [...remoteGoals, ...unsyncedLocal];
+
+        const gMap = new Map<string, SharedGoal>();
+        for (const rg of remoteGoals) {
+          const pending = pendingMap.get(rg.id);
+          if (pending && pending.operation === 'DELETE') continue;
+          if (pending && (pending.operation === 'UPDATE' || pending.operation === 'INSERT')) {
+            gMap.set(rg.id, pending.payload as SharedGoal);
+          } else {
+            gMap.set(rg.id, rg);
+          }
+        }
+        for (const lg of this.state.goals) {
+          const pending = pendingMap.get(lg.id);
+          if (pending && pending.operation === 'DELETE') continue;
+          if (!gMap.has(lg.id) || pending) {
+            gMap.set(lg.id, lg);
+          }
+        }
+        this.state.goals = Array.from(gMap.values());
       }
 
       // 6. BILLS MERGE
@@ -2130,11 +2331,28 @@ class OfflineStorageEngine {
           lastPaidDate: r.last_paid_date,
           createdAt: r.created_at,
           updatedAt: r.updated_at,
-          isDeleted: r.is_deleted,
-        }));
-        const remoteIds = new Set(remoteBills.map((b) => b.id));
-        const unsyncedLocal = this.state.bills.filter((b) => pendingIds.has(b.id) && !remoteIds.has(b.id));
-        this.state.bills = [...remoteBills, ...unsyncedLocal];
+          isDeleted: Boolean(r.is_deleted),
+        })).filter((b: RecurringBill) => !b.isDeleted);
+
+        const billMap = new Map<string, RecurringBill>();
+        for (const rBill of remoteBills) {
+          const pending = pendingMap.get(rBill.id);
+          if (pending && pending.operation === 'DELETE') continue;
+          if (pending && (pending.operation === 'UPDATE' || pending.operation === 'INSERT')) {
+            billMap.set(rBill.id, pending.payload as RecurringBill);
+          } else {
+            billMap.set(rBill.id, rBill);
+          }
+        }
+        for (const lBill of this.state.bills) {
+          if (lBill.isDeleted) continue;
+          const pending = pendingMap.get(lBill.id);
+          if (pending && pending.operation === 'DELETE') continue;
+          if (!billMap.has(lBill.id) || pending) {
+            billMap.set(lBill.id, lBill);
+          }
+        }
+        this.state.bills = Array.from(billMap.values());
       }
 
       // 7. DEBTS MERGE
@@ -2154,18 +2372,435 @@ class OfflineStorageEngine {
           payments: r.payments || [],
           createdAt: r.created_at,
           updatedAt: r.updated_at,
-          isDeleted: r.is_deleted,
-        }));
-        const remoteIds = new Set(remoteDebts.map((d) => d.id));
-        const unsyncedLocal = this.state.debts.filter((d) => pendingIds.has(d.id) && !remoteIds.has(d.id));
-        this.state.debts = [...remoteDebts, ...unsyncedLocal];
+          isDeleted: Boolean(r.is_deleted),
+        })).filter((d: DebtItem) => !d.isDeleted);
+
+        const dMap = new Map<string, DebtItem>();
+        for (const rd of remoteDebts) {
+          const pending = pendingMap.get(rd.id);
+          if (pending && pending.operation === 'DELETE') continue;
+          if (pending && (pending.operation === 'UPDATE' || pending.operation === 'INSERT')) {
+            dMap.set(rd.id, pending.payload as DebtItem);
+          } else {
+            dMap.set(rd.id, rd);
+          }
+        }
+        for (const ld of this.state.debts) {
+          if (ld.isDeleted) continue;
+          const pending = pendingMap.get(ld.id);
+          if (pending && pending.operation === 'DELETE') continue;
+          if (!dMap.has(ld.id) || pending) {
+            dMap.set(ld.id, ld);
+          }
+        }
+        this.state.debts = Array.from(dMap.values());
       }
 
+      // Selalu kalkulasi ulang saldo rekening agar sesuai dengan seluruh transaksi yang masuk
+      this.recalculateAccountBalances();
       this.persist();
       return true;
     } catch (e) {
       console.warn('Failed to pull data from Supabase:', e);
       return false;
+    }
+  }
+
+  // --- SUPABASE REALTIME LIVE SYNC SUBSCRIPTION ---
+  public setupRealtimeSubscription(userId: string) {
+    const supabase = getSupabaseClient();
+    if (!supabase || !isSupabaseConfigured() || !userId) return;
+
+    if (this.realtimeChannel) {
+      try {
+        supabase.removeChannel(this.realtimeChannel);
+      } catch {}
+      this.realtimeChannel = null;
+    }
+
+    try {
+      this.realtimeChannel = supabase
+        .channel(`realtime-sync-${userId}`)
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'transactions', filter: `user_id=eq.${userId}` },
+          (payload: any) => this.handleRealtimeTransaction(payload)
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'accounts', filter: `user_id=eq.${userId}` },
+          (payload: any) => this.handleRealtimeAccount(payload)
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'categories', filter: `user_id=eq.${userId}` },
+          (payload: any) => this.handleRealtimeCategory(payload)
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'budgets', filter: `user_id=eq.${userId}` },
+          (payload: any) => this.handleRealtimeBudget(payload)
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'goals', filter: `user_id=eq.${userId}` },
+          (payload: any) => this.handleRealtimeGoal(payload)
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'bills', filter: `user_id=eq.${userId}` },
+          (payload: any) => this.handleRealtimeBill(payload)
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'debts', filter: `user_id=eq.${userId}` },
+          (payload: any) => this.handleRealtimeDebt(payload)
+        )
+        .subscribe((status: string) => {
+          if (status === 'SUBSCRIBED') {
+            console.log('[Supabase Realtime] Live sync active for user:', userId);
+          }
+        });
+    } catch (err) {
+      console.warn('Realtime subscription setup failed:', err);
+    }
+  }
+
+  private handleRealtimeTransaction(payload: any) {
+    const { eventType, new: newRecord, old: oldRecord } = payload;
+    if (eventType === 'DELETE') {
+      const id = oldRecord?.id;
+      if (id) {
+        this.state.transactions = this.state.transactions.filter((t) => t.id !== id);
+        this.recalculateAccountBalances();
+        this.persist();
+      }
+    } else if (eventType === 'INSERT' || eventType === 'UPDATE') {
+      if (!newRecord) return;
+      if (newRecord.is_deleted) {
+        this.state.transactions = this.state.transactions.filter((t) => t.id !== newRecord.id);
+        this.recalculateAccountBalances();
+        this.persist();
+        return;
+      }
+
+      // Abaikan jika item ini masih dalam proses syncQueue lokal agar tidak overwrite
+      const isPending = this.state.syncQueue.some(
+        (q) => q.entityTable === 'transactions' && q.entityId === newRecord.id && q.status === 'pending'
+      );
+      if (isPending) return;
+
+      const tx: Transaction = {
+        id: newRecord.id,
+        workspaceId: newRecord.workspace_id || 'ws-default',
+        accountId: newRecord.account_id,
+        categoryId: newRecord.category_id,
+        userId: newRecord.user_id,
+        amount: Number(newRecord.amount),
+        type: newRecord.type,
+        targetAccountId: newRecord.target_account_id,
+        partyFrom: newRecord.party_from || '',
+        partyTo: newRecord.party_to || '',
+        tags: newRecord.tags || [],
+        notes: newRecord.notes || '',
+        transactionDate: newRecord.transaction_date,
+        isGuiltFree: Boolean(newRecord.is_guilt_free),
+        guiltFreeOwner: newRecord.guilt_free_owner,
+        clientCreatedAt: newRecord.client_created_at || newRecord.updated_at,
+        updatedAt: newRecord.updated_at,
+        version: newRecord.version || 1,
+        isDeleted: Boolean(newRecord.is_deleted),
+      };
+
+      const existingIndex = this.state.transactions.findIndex((t) => t.id === tx.id);
+      if (existingIndex >= 0) {
+        this.state.transactions[existingIndex] = tx;
+      } else {
+        this.state.transactions = [tx, ...this.state.transactions].sort(
+          (a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime()
+        );
+      }
+
+      this.recalculateAccountBalances();
+      this.persist();
+    }
+  }
+
+  private handleRealtimeAccount(payload: any) {
+    const { eventType, new: newRecord, old: oldRecord } = payload;
+    if (eventType === 'DELETE') {
+      const id = oldRecord?.id;
+      if (id) {
+        this.state.accounts = this.state.accounts.filter((a) => a.id !== id);
+        this.recalculateAccountBalances();
+        this.persist();
+      }
+    } else if (eventType === 'INSERT' || eventType === 'UPDATE') {
+      if (!newRecord || newRecord.is_deleted) {
+        if (newRecord?.id) {
+          this.state.accounts = this.state.accounts.filter((a) => a.id !== newRecord.id);
+          this.recalculateAccountBalances();
+          this.persist();
+        }
+        return;
+      }
+
+      const isPending = this.state.syncQueue.some(
+        (q) => q.entityTable === 'accounts' && q.entityId === newRecord.id && q.status === 'pending'
+      );
+      if (isPending) return;
+
+      const acc: Account = {
+        id: newRecord.id,
+        workspaceId: newRecord.workspace_id || 'ws-default',
+        name: newRecord.name,
+        type: newRecord.type,
+        currency: newRecord.currency || 'IDR',
+        accountNumber: newRecord.account_number || '',
+        balance: Number(newRecord.balance),
+        initialBalance: Number(newRecord.initial_balance),
+        color: newRecord.color,
+        isArchived: Boolean(newRecord.is_archived),
+        isDeleted: Boolean(newRecord.is_deleted),
+        updatedAt: newRecord.updated_at,
+      };
+
+      const existingIndex = this.state.accounts.findIndex((a) => a.id === acc.id);
+      if (existingIndex >= 0) {
+        this.state.accounts[existingIndex] = acc;
+      } else {
+        this.state.accounts = [...this.state.accounts, acc];
+      }
+
+      this.recalculateAccountBalances();
+      this.persist();
+    }
+  }
+
+  private handleRealtimeCategory(payload: any) {
+    const { eventType, new: newRecord, old: oldRecord } = payload;
+    if (eventType === 'DELETE') {
+      const id = oldRecord?.id;
+      if (id) {
+        this.state.categories = this.state.categories.filter((c) => c.id !== id);
+        this.persist();
+      }
+    } else if (eventType === 'INSERT' || eventType === 'UPDATE') {
+      if (!newRecord || newRecord.is_deleted) {
+        if (newRecord?.id) {
+          this.state.categories = this.state.categories.filter((c) => c.id !== newRecord.id);
+          this.persist();
+        }
+        return;
+      }
+
+      const isPending = this.state.syncQueue.some(
+        (q) => q.entityTable === 'categories' && q.entityId === newRecord.id && q.status === 'pending'
+      );
+      if (isPending) return;
+
+      const cat: Category = {
+        id: newRecord.id,
+        workspaceId: newRecord.workspace_id || 'ws-default',
+        parentId: newRecord.parent_id,
+        name: newRecord.name,
+        icon: newRecord.icon,
+        color: newRecord.color,
+        type: newRecord.type,
+        isSystem: Boolean(newRecord.is_system),
+        isDeleted: Boolean(newRecord.is_deleted),
+      };
+
+      const existingIndex = this.state.categories.findIndex((c) => c.id === cat.id);
+      if (existingIndex >= 0) {
+        this.state.categories[existingIndex] = cat;
+      } else {
+        this.state.categories = [...this.state.categories, cat];
+      }
+      this.persist();
+    }
+  }
+
+  private handleRealtimeBudget(payload: any) {
+    const { eventType, new: newRecord, old: oldRecord } = payload;
+    if (eventType === 'DELETE') {
+      const id = oldRecord?.id;
+      if (id) {
+        this.state.budgets = this.state.budgets.filter((b) => b.id !== id);
+        this.persist();
+      }
+    } else if (eventType === 'INSERT' || eventType === 'UPDATE') {
+      if (!newRecord || newRecord.is_deleted) {
+        if (newRecord?.id) {
+          this.state.budgets = this.state.budgets.filter((b) => b.id !== newRecord.id);
+          this.persist();
+        }
+        return;
+      }
+      const isPending = this.state.syncQueue.some(
+        (q) => q.entityTable === 'budgets' && q.entityId === newRecord.id && q.status === 'pending'
+      );
+      if (isPending) return;
+
+      const b: Budget = {
+        id: newRecord.id,
+        workspaceId: newRecord.workspace_id || 'ws-default',
+        categoryId: newRecord.category_id,
+        accountId: newRecord.account_id,
+        duration: newRecord.duration,
+        startDate: newRecord.start_date,
+        endDate: newRecord.end_date,
+        periodMonth: newRecord.period_month,
+        limitAmount: Number(newRecord.limit_amount),
+        rolloverAmount: Number(newRecord.rollover_amount),
+        rolloverAction: newRecord.rollover_action,
+        updatedAt: newRecord.updated_at,
+        isDeleted: Boolean(newRecord.is_deleted),
+      };
+
+      const existingIndex = this.state.budgets.findIndex((item) => item.id === b.id);
+      if (existingIndex >= 0) {
+        this.state.budgets[existingIndex] = b;
+      } else {
+        this.state.budgets = [...this.state.budgets, b];
+      }
+      this.persist();
+    }
+  }
+
+  private handleRealtimeGoal(payload: any) {
+    const { eventType, new: newRecord, old: oldRecord } = payload;
+    if (eventType === 'DELETE') {
+      const id = oldRecord?.id;
+      if (id) {
+        this.state.goals = this.state.goals.filter((g) => g.id !== id);
+        this.persist();
+      }
+    } else if (eventType === 'INSERT' || eventType === 'UPDATE') {
+      if (!newRecord) return;
+      const isPending = this.state.syncQueue.some(
+        (q) => q.entityTable === 'goals' && q.entityId === newRecord.id && q.status === 'pending'
+      );
+      if (isPending) return;
+
+      const g: SharedGoal = {
+        id: newRecord.id,
+        workspaceId: newRecord.workspace_id || 'ws-default',
+        name: newRecord.name,
+        targetAmount: Number(newRecord.target_amount),
+        currentAmount: Number(newRecord.current_amount),
+        targetDate: newRecord.target_date,
+        icon: newRecord.icon,
+        color: newRecord.color,
+        notes: newRecord.notes,
+        isCompleted: Boolean(newRecord.is_completed),
+        updatedAt: newRecord.updated_at,
+      };
+
+      const existingIndex = this.state.goals.findIndex((item) => item.id === g.id);
+      if (existingIndex >= 0) {
+        this.state.goals[existingIndex] = g;
+      } else {
+        this.state.goals = [...this.state.goals, g];
+      }
+      this.persist();
+    }
+  }
+
+  private handleRealtimeBill(payload: any) {
+    const { eventType, new: newRecord, old: oldRecord } = payload;
+    if (eventType === 'DELETE') {
+      const id = oldRecord?.id;
+      if (id) {
+        this.state.bills = this.state.bills.filter((b) => b.id !== id);
+        this.persist();
+      }
+    } else if (eventType === 'INSERT' || eventType === 'UPDATE') {
+      if (!newRecord || newRecord.is_deleted) {
+        if (newRecord?.id) {
+          this.state.bills = this.state.bills.filter((b) => b.id !== newRecord.id);
+          this.persist();
+        }
+        return;
+      }
+      const isPending = this.state.syncQueue.some(
+        (q) => q.entityTable === 'bills' && q.entityId === newRecord.id && q.status === 'pending'
+      );
+      if (isPending) return;
+
+      const bill: RecurringBill = {
+        id: newRecord.id,
+        workspaceId: newRecord.workspace_id || 'ws-default',
+        name: newRecord.name,
+        amount: Number(newRecord.amount),
+        categoryId: newRecord.category_id,
+        accountId: newRecord.account_id,
+        dueDay: newRecord.due_day,
+        frequency: newRecord.frequency,
+        notes: newRecord.notes,
+        paidMonths: newRecord.paid_months || [],
+        lastPaidDate: newRecord.last_paid_date,
+        createdAt: newRecord.created_at,
+        updatedAt: newRecord.updated_at,
+        isDeleted: Boolean(newRecord.is_deleted),
+      };
+
+      const existingIndex = this.state.bills.findIndex((item) => item.id === bill.id);
+      if (existingIndex >= 0) {
+        this.state.bills[existingIndex] = bill;
+      } else {
+        this.state.bills = [...this.state.bills, bill];
+      }
+      this.persist();
+    }
+  }
+
+  private handleRealtimeDebt(payload: any) {
+    const { eventType, new: newRecord, old: oldRecord } = payload;
+    if (eventType === 'DELETE') {
+      const id = oldRecord?.id;
+      if (id) {
+        this.state.debts = this.state.debts.filter((d) => d.id !== id);
+        this.persist();
+      }
+    } else if (eventType === 'INSERT' || eventType === 'UPDATE') {
+      if (!newRecord || newRecord.is_deleted) {
+        if (newRecord?.id) {
+          this.state.debts = this.state.debts.filter((d) => d.id !== newRecord.id);
+          this.persist();
+        }
+        return;
+      }
+      const isPending = this.state.syncQueue.some(
+        (q) => q.entityTable === 'debts' && q.entityId === newRecord.id && q.status === 'pending'
+      );
+      if (isPending) return;
+
+      const debt: DebtItem = {
+        id: newRecord.id,
+        workspaceId: newRecord.workspace_id || 'ws-default',
+        type: newRecord.type,
+        personName: newRecord.person_name,
+        phone: newRecord.phone,
+        totalAmount: Number(newRecord.total_amount),
+        paidAmount: Number(newRecord.paid_amount),
+        startDate: newRecord.start_date,
+        dueDate: newRecord.due_date,
+        notes: newRecord.notes,
+        status: newRecord.status,
+        payments: newRecord.payments || [],
+        createdAt: newRecord.created_at,
+        updatedAt: newRecord.updated_at,
+        isDeleted: Boolean(newRecord.is_deleted),
+      };
+
+      const existingIndex = this.state.debts.findIndex((item) => item.id === debt.id);
+      if (existingIndex >= 0) {
+        this.state.debts[existingIndex] = debt;
+      } else {
+        this.state.debts = [...this.state.debts, debt];
+      }
+      this.persist();
     }
   }
 
@@ -2197,11 +2832,12 @@ class OfflineStorageEngine {
     const successfullySyncedIds = new Set<string>();
 
     try {
-      const { data: userData } = await supabase.auth.getUser();
-      let userId = userData?.user?.id;
+      let userId: string | undefined;
+      const { data: sessionData } = await supabase.auth.getSession();
+      userId = sessionData?.session?.user?.id;
       if (!userId) {
-        const { data: sessionData } = await supabase.auth.getSession();
-        userId = sessionData?.session?.user?.id;
+        const { data: userData } = await supabase.auth.getUser();
+        userId = userData?.user?.id;
       }
 
       if (!userId) {
