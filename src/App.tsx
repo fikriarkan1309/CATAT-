@@ -250,6 +250,9 @@ export default function App() {
             categories={categories}
             transactions={transactions}
             budgets={budgets}
+            goals={goals}
+            bills={bills}
+            debts={debts}
             onNavigateTab={setCurrentTab}
             onAddIncome={(accId) => handleOpenIncome(accId)}
             onAddExpense={(accId) => handleOpenExpense(accId)}

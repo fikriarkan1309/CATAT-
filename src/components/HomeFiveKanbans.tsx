@@ -10,8 +10,11 @@ import {
   Trash2,
   RotateCcw,
   Archive,
+  PiggyBank,
+  Receipt,
+  Scale,
 } from 'lucide-react';
-import { Account, Budget, Category, Transaction } from '../types/finance';
+import { Account, Budget, Category, Transaction, SharedGoal, RecurringBill, DebtItem } from '../types/finance';
 import { formatRupiah, formatCompactRupiah, formatDateIndo } from '../lib/formatters';
 import { MainNavTab } from './Header';
 
@@ -20,6 +23,9 @@ interface HomeFiveKanbansProps {
   categories: Category[];
   transactions: Transaction[];
   budgets: Budget[];
+  goals?: SharedGoal[];
+  bills?: RecurringBill[];
+  debts?: DebtItem[];
   onNavigateTab: (tab: MainNavTab) => void;
   onAddIncome: (accountId?: string) => void;
   onAddExpense: (accountId?: string) => void;
@@ -113,6 +119,9 @@ export const HomeFiveKanbans: React.FC<HomeFiveKanbansProps> = ({
   categories,
   transactions,
   budgets,
+  goals = [],
+  bills = [],
+  debts = [],
   onNavigateTab,
   onAddIncome,
   onAddExpense,
@@ -382,267 +391,523 @@ export const HomeFiveKanbans: React.FC<HomeFiveKanbansProps> = ({
       </div>
 
       {/* ========================================================================= */}
-      {/* BARIS 2: REKENING, ANGGARAN, TRANSAKSI (3 KARTU SEJAJAR) */}
+      {/* BARIS 2: MODUL SESUAI ISIAN PENGGUNA (REKENING, TRANSAKSI, ANGGARAN, DLL) */}
       {/* ========================================================================= */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-2.5">
-        {/* 3. KANBAN REKENING */}
-        <div
-          onClick={() => onNavigateTab('accounts')}
-          className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 p-3 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between h-[210px] cursor-pointer group"
-          title="Klik untuk membuka Halaman Rekening Lengkap"
-        >
-          <div className="flex items-center justify-between pb-1.5 border-b border-slate-100 dark:border-slate-800">
-            <span className="w-4" />
-            <h2 className="text-xs font-bold text-slate-800 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors tracking-tight text-center flex-1 flex items-center justify-center gap-1.5">
-              <span>Rekening</span>
-              <span className="text-[10px] text-slate-400 dark:text-slate-500 group-hover:text-blue-600 font-normal">→</span>
-            </h2>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onAddNewAccount();
-              }}
-              className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
-              title="Tambah Rekening"
-            >
-              <MoreVertical className="w-3.5 h-3.5" />
-            </button>
-          </div>
+      {(() => {
+        const showAccounts = activeAccounts.length > 0;
+        const showTransactions = transactions.length > 0;
+        const showBudgets = budgets.length > 0;
+        const showGoals = (goals || []).length > 0;
+        const showBills = (bills || []).length > 0;
+        const showDebts = (debts || []).length > 0;
 
-          {/* List Rekening */}
-          <div className="flex-1 overflow-y-auto no-scrollbar space-y-2 py-1.5">
-            {activeAccounts.map((acc) => (
+        const filledCount = [
+          showAccounts,
+          showTransactions,
+          showBudgets,
+          showGoals,
+          showBills,
+          showDebts,
+        ].filter(Boolean).length;
+
+        if (filledCount === 0) {
+          return (
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 p-6 text-center space-y-2.5">
+              <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                Modul Dashboard (Rekening, Transaksi, Anggaran, Tabungan, Tagihan, Hutang/Piutang) akan otomatis tampil di sini saat Anda mulai mengisi datanya.
+              </p>
+              <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={onAddNewAccount}
+                  className="px-3 py-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 text-xs font-bold hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors"
+                >
+                  + Tambah Rekening
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onAddExpense()}
+                  className="px-3 py-1.5 rounded-xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 text-xs font-bold hover:bg-rose-100 dark:hover:bg-rose-900/40 transition-colors"
+                >
+                  + Catat Transaksi
+                </button>
+              </div>
+            </div>
+          );
+        }
+
+        const gridColsClass =
+          filledCount === 1
+            ? 'grid grid-cols-1'
+            : filledCount === 2
+            ? 'grid grid-cols-1 md:grid-cols-2 gap-2.5'
+            : 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5';
+
+        return (
+          <div className={gridColsClass}>
+            {/* 1. KANBAN REKENING */}
+            {showAccounts && (
               <div
-                key={acc.id}
-                className="p-2 rounded-xl bg-slate-50/70 dark:bg-slate-800/60 hover:bg-slate-100/80 dark:hover:bg-slate-800 transition-all flex items-center justify-between group/item"
+                onClick={() => onNavigateTab('accounts')}
+                className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 p-3 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between h-[210px] cursor-pointer group"
+                title="Klik untuk membuka Halaman Rekening Lengkap"
               >
-                <div>
-                  <div className="text-xs font-bold text-slate-900 dark:text-white truncate max-w-[150px]">
-                    {acc.name}
-                  </div>
-                  <div className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">
-                    Terakhir digunakan: 12/10/2026
-                  </div>
+                <div className="flex items-center justify-between pb-1.5 border-b border-slate-100 dark:border-slate-800">
+                  <span className="w-4" />
+                  <h2 className="text-xs font-bold text-slate-800 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors tracking-tight text-center flex-1 flex items-center justify-center gap-1.5">
+                    <span>Rekening</span>
+                    <span className="text-[10px] text-slate-400 dark:text-slate-500 group-hover:text-blue-600 font-normal">→</span>
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onAddNewAccount();
+                    }}
+                    className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 p-0.5"
+                    title="Tambah Rekening"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                  </button>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <div className="text-xs font-bold text-emerald-600 dark:text-emerald-400 font-mono whitespace-nowrap">
-                    {formatRupiah(acc.balance)}
-                  </div>
+                {/* List Rekening */}
+                <div className="flex-1 overflow-y-auto no-scrollbar space-y-2 py-1.5">
+                  {activeAccounts.map((acc) => (
+                    <div
+                      key={acc.id}
+                      className="p-2 rounded-xl bg-slate-50/70 dark:bg-slate-800/60 hover:bg-slate-100/80 dark:hover:bg-slate-800 transition-all flex items-center justify-between group/item"
+                    >
+                      <div className="min-w-0 pr-2">
+                        <div className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                          {acc.name}
+                        </div>
+                        <div className="text-[10px] text-slate-400 dark:text-slate-500 font-mono uppercase">
+                          {acc.type}
+                        </div>
+                      </div>
 
-                  {/* Quick Action buttons */}
-                  <div className="flex items-center gap-0.5 opacity-80 group-hover/item:opacity-100">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onAddIncome(acc.id);
-                      }}
-                      className="p-1 hover:bg-emerald-100 dark:hover:bg-emerald-950/80 text-emerald-700 dark:text-emerald-400 rounded transition-colors"
-                      title="Tambah Pemasukan"
-                    >
-                      <Plus className="w-3 h-3 stroke-[3]" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onAddExpense(acc.id);
-                      }}
-                      className="p-1 hover:bg-rose-100 dark:hover:bg-rose-950/80 text-rose-700 dark:text-rose-400 rounded transition-colors"
-                      title="Tambah Pengeluaran"
-                    >
-                      <Minus className="w-3 h-3 stroke-[3]" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onTransfer(acc.id);
-                      }}
-                      className="p-1 hover:bg-blue-100 dark:hover:bg-blue-950/80 text-blue-700 dark:text-blue-400 rounded transition-colors"
-                      title="Transfer"
-                    >
-                      <ArrowLeftRight className="w-3 h-3" />
-                    </button>
-                  </div>
+                      <div className="flex items-center gap-2">
+                        <div className="text-xs font-bold text-emerald-600 dark:text-emerald-400 font-mono whitespace-nowrap">
+                          {formatRupiah(acc.balance)}
+                        </div>
+
+                        {/* Quick Action buttons */}
+                        <div className="flex items-center gap-0.5 opacity-80 group-hover/item:opacity-100">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onAddIncome(acc.id);
+                            }}
+                            className="p-1 hover:bg-emerald-100 dark:hover:bg-emerald-950/80 text-emerald-700 dark:text-emerald-400 rounded transition-colors"
+                            title="Tambah Pemasukan"
+                          >
+                            <Plus className="w-3 h-3 stroke-[3]" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onAddExpense(acc.id);
+                            }}
+                            className="p-1 hover:bg-rose-100 dark:hover:bg-rose-950/80 text-rose-700 dark:text-rose-400 rounded transition-colors"
+                            title="Tambah Pengeluaran"
+                          >
+                            <Minus className="w-3 h-3 stroke-[3]" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onTransfer(acc.id);
+                            }}
+                            className="p-1 hover:bg-blue-100 dark:hover:bg-blue-950/80 text-blue-700 dark:text-blue-400 rounded transition-colors"
+                            title="Transfer"
+                          >
+                            <ArrowLeftRight className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="text-[10px] text-slate-400 dark:text-slate-500 pt-1 border-t border-slate-100 dark:border-slate-800 flex justify-between">
+                  <span className="group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">Buka Halaman Rekening →</span>
+                  <span className="font-mono text-slate-600 dark:text-slate-300 font-semibold">
+                    Total: {formatCompactRupiah(activeAccounts.reduce((s, a) => s + a.balance, 0))}
+                  </span>
                 </div>
               </div>
-            ))}
-          </div>
+            )}
 
-          <div className="text-[10px] text-slate-400 dark:text-slate-500 pt-1 border-t border-slate-100 dark:border-slate-800 flex justify-between">
-            <span className="group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">Buka Halaman Rekening →</span>
-            <span className="font-mono text-slate-600 dark:text-slate-300 font-semibold">
-              Total: {formatCompactRupiah(activeAccounts.reduce((s, a) => s + a.balance, 0))}
-            </span>
-          </div>
-        </div>
-
-        {/* 4. KANBAN ANGGARAN */}
-        <div
-          onClick={() => onNavigateTab('budgets')}
-          className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 p-3 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between h-[210px] cursor-pointer group"
-          title="Klik untuk membuka Halaman Anggaran Lengkap"
-        >
-          <div className="flex items-center justify-between pb-1.5 border-b border-slate-100 dark:border-slate-800">
-            <span className="w-4" />
-            <h2 className="text-xs font-bold text-slate-800 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors tracking-tight text-center flex-1 flex items-center justify-center gap-1.5">
-              <span>Anggaran</span>
-              <span className="text-[10px] text-slate-400 dark:text-slate-500 group-hover:text-blue-600 font-normal">→</span>
-            </h2>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onAddNewBudget();
-              }}
-              className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
-              title="Tambah Anggaran"
-            >
-              <MoreVertical className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          {/* List Anggaran */}
-          <div className="flex-1 overflow-y-auto no-scrollbar space-y-2 py-1.5">
-            {budgets.map((b) => {
-              const cat = categories.find((c) => c.id === b.categoryId);
-              const subIds = categories.filter((c) => c.parentId === b.categoryId).map((c) => c.id);
-              const catIds = [b.categoryId, ...subIds];
-              const spent = transactions
-                .filter((t) => catIds.includes(t.categoryId) && t.type === 'expense')
-                .reduce((sum, t) => sum + t.amount, 0);
-
-              const limit = b.limitAmount + (b.rolloverAmount || 0);
-              const remaining = Math.max(0, limit - spent);
-              const percent = Math.min(100, Math.round((spent / limit) * 100));
-
-              return (
-                <div
-                  key={b.id}
-                  className="p-2 rounded-xl bg-slate-50/70 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60 space-y-1 hover:bg-slate-100/60 dark:hover:bg-slate-800 transition-colors"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold text-slate-800 dark:text-white truncate max-w-[140px]">
-                      {cat?.name || 'Anggaran'}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onProcessRollover(b);
-                      }}
-                      className="p-0.5 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 rounded"
-                      title="Proses Rollover"
-                    >
-                      <RotateCcw className="w-3 h-3" />
-                    </button>
-                  </div>
-
-                  {/* Horizontal Progress Bar */}
-                  <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-1.5 overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-slate-900 dark:bg-white transition-all"
-                      style={{ width: `${percent}%` }}
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between text-[10px] font-mono text-slate-500 dark:text-slate-400">
-                    <span>Terbayar: {formatCompactRupiah(spent)}</span>
-                    <span className="font-semibold text-slate-800 dark:text-slate-200">
-                      Sisa: {formatCompactRupiah(remaining)}
-                    </span>
-                  </div>
+            {/* 2. KANBAN TRANSAKSI */}
+            {showTransactions && (
+              <div
+                onClick={() => onNavigateTab('transactions')}
+                className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 p-3 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between h-[210px] cursor-pointer group"
+                title="Klik untuk membuka Halaman Transaksi Lengkap"
+              >
+                <div className="flex items-center justify-between pb-1.5 border-b border-slate-100 dark:border-slate-800">
+                  <span className="w-4" />
+                  <h2 className="text-xs font-bold text-slate-800 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors tracking-tight text-center flex-1 flex items-center justify-center gap-1.5">
+                    <span>Transaksi</span>
+                    <span className="text-[10px] text-slate-400 dark:text-slate-500 group-hover:text-blue-600 font-normal">→</span>
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onNavigateTab('transactions');
+                    }}
+                    className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 p-0.5"
+                    title="Buka Transaksi"
+                  >
+                    <MoreVertical className="w-3.5 h-3.5" />
+                  </button>
                 </div>
-              );
-            })}
-          </div>
 
-          <div className="text-[10px] text-slate-400 dark:text-slate-500 pt-1 border-t border-slate-100 dark:border-slate-800 flex justify-between">
-            <span className="group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">Buka Halaman Anggaran →</span>
-            <span className="font-mono text-slate-600 dark:text-slate-300 font-semibold">{budgets.length} pos</span>
-          </div>
-        </div>
+                {/* List Transaksi */}
+                <div className="flex-1 overflow-y-auto no-scrollbar space-y-1.5 py-1.5">
+                  {transactions.slice(0, 10).map((t) => {
+                    const isIncome = t.type === 'income';
+                    const isTransfer = t.type === 'transfer';
+                    const cat = categories.find((c) => c.id === t.categoryId);
+                    const acc = accounts.find((a) => a.id === t.accountId);
+                    const targetAcc = isTransfer && t.targetAccountId ? accounts.find((a) => a.id === t.targetAccountId) : null;
 
-        {/* 5. KANBAN TRANSAKSI */}
-        <div
-          onClick={() => onNavigateTab('transactions')}
-          className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 p-3 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between h-[210px] cursor-pointer group"
-          title="Klik untuk membuka Halaman Transaksi Lengkap"
-        >
-          <div className="flex items-center justify-between pb-1.5 border-b border-slate-100 dark:border-slate-800">
-            <span className="w-4" />
-            <h2 className="text-xs font-bold text-slate-800 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors tracking-tight text-center flex-1 flex items-center justify-center gap-1.5">
-              <span>Transaksi</span>
-              <span className="text-[10px] text-slate-400 dark:text-slate-500 group-hover:text-blue-600 font-normal">→</span>
-            </h2>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onNavigateTab('transactions');
-              }}
-              className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
-              title="Buka Transaksi"
-            >
-              <MoreVertical className="w-3.5 h-3.5" />
-            </button>
-          </div>
+                    const title = isTransfer ? 'Transfer Antar Rekening' : (t.notes || cat?.name || 'Transaksi');
+                    const sub = isTransfer
+                      ? `${acc?.name || 'Rekening'} ➔ ${targetAcc?.name || 'Rekening'}`
+                      : `${acc?.name || 'BCA'} · ${formatDateIndo(t.transactionDate)}`;
 
-          {/* List Transaksi */}
-          <div className="flex-1 overflow-y-auto no-scrollbar space-y-1.5 py-1.5">
-            {transactions.slice(0, 10).map((t) => {
-              const isIncome = t.type === 'income';
-              const cat = categories.find((c) => c.id === t.categoryId);
-              const acc = accounts.find((a) => a.id === t.accountId);
+                    return (
+                      <div
+                        key={t.id}
+                        className="p-1.5 rounded-xl bg-slate-50/70 dark:bg-slate-800/60 hover:bg-slate-100/70 dark:hover:bg-slate-800 transition-all flex items-center justify-between gap-2"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div
+                            className="w-7 h-7 rounded-lg flex items-center justify-center text-white text-[11px] font-bold shrink-0 shadow-2xs"
+                            style={{ backgroundColor: isTransfer ? '#3B82F6' : (cat?.color || (isIncome ? '#10B981' : '#EF4444')) }}
+                          >
+                            {isTransfer ? '⇄' : (cat?.name?.slice(0, 1) || 'T')}
+                          </div>
 
-              return (
-                <div
-                  key={t.id}
-                  className="p-1.5 rounded-xl bg-slate-50/70 dark:bg-slate-800/60 hover:bg-slate-100/70 dark:hover:bg-slate-800 transition-all flex items-center justify-between gap-2"
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    {/* Icon Square */}
-                    <div
-                      className="w-7 h-7 rounded-lg flex items-center justify-center text-white text-[11px] font-bold shrink-0 shadow-2xs"
-                      style={{ backgroundColor: cat?.color || '#3B82F6' }}
-                    >
-                      {cat?.name?.slice(0, 1) || 'T'}
-                    </div>
+                          <div className="min-w-0">
+                            <div className="text-[11px] font-bold text-slate-900 dark:text-white truncate">
+                              {title}
+                            </div>
+                            <div className="text-[9px] text-slate-400 dark:text-slate-500 font-mono truncate">
+                              {sub}
+                            </div>
+                          </div>
+                        </div>
 
-                    <div className="min-w-0">
-                      <div className="text-[11px] font-bold text-slate-900 dark:text-white truncate">
-                        {t.notes || cat?.name || 'Transaksi'}
+                        <div className="text-right shrink-0">
+                          <div
+                            className={`text-[11px] font-bold font-mono ${
+                              isIncome
+                                ? 'text-emerald-600 dark:text-emerald-400'
+                                : isTransfer
+                                ? 'text-blue-600 dark:text-blue-400'
+                                : 'text-slate-900 dark:text-white'
+                            }`}
+                          >
+                            {isIncome ? '+' : isTransfer ? '⇄ ' : '-'}
+                            {formatRupiah(t.amount)}
+                          </div>
+                        </div>
                       </div>
-                      <div className="text-[9px] text-slate-400 dark:text-slate-500 font-mono truncate">
-                        {acc?.name || 'BCA'} · {formatDateIndo(t.transactionDate)}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="text-right shrink-0">
-                    <div
-                      className={`text-[11px] font-bold font-mono ${
-                        isIncome ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-900 dark:text-white'
-                      }`}
-                    >
-                      {isIncome ? '+' : '-'}
-                      {formatRupiah(t.amount)}
-                    </div>
-                  </div>
+                    );
+                  })}
                 </div>
-              );
-            })}
-          </div>
 
-          <div className="text-[10px] text-slate-400 dark:text-slate-500 pt-1 border-t border-slate-100 dark:border-slate-800 flex justify-between">
-            <span className="group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">Buka Halaman Transaksi →</span>
-            <span className="font-mono text-slate-600 dark:text-slate-300 font-semibold">{transactions.length} mutasi</span>
+                <div className="text-[10px] text-slate-400 dark:text-slate-500 pt-1 border-t border-slate-100 dark:border-slate-800 flex justify-between">
+                  <span className="group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">Buka Halaman Transaksi →</span>
+                  <span className="font-mono text-slate-600 dark:text-slate-300 font-semibold">{transactions.length} mutasi</span>
+                </div>
+              </div>
+            )}
+
+            {/* 3. KANBAN ANGGARAN */}
+            {showBudgets && (
+              <div
+                onClick={() => onNavigateTab('budgets')}
+                className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 p-3 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between h-[210px] cursor-pointer group"
+                title="Klik untuk membuka Halaman Anggaran Lengkap"
+              >
+                <div className="flex items-center justify-between pb-1.5 border-b border-slate-100 dark:border-slate-800">
+                  <span className="w-4" />
+                  <h2 className="text-xs font-bold text-slate-800 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors tracking-tight text-center flex-1 flex items-center justify-center gap-1.5">
+                    <span>Anggaran</span>
+                    <span className="text-[10px] text-slate-400 dark:text-slate-500 group-hover:text-blue-600 font-normal">→</span>
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onAddNewBudget();
+                    }}
+                    className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 p-0.5"
+                    title="Tambah Anggaran"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {/* List Anggaran */}
+                <div className="flex-1 overflow-y-auto no-scrollbar space-y-2 py-1.5">
+                  {budgets.map((b) => {
+                    const cat = categories.find((c) => c.id === b.categoryId);
+                    const subIds = categories.filter((c) => c.parentId === b.categoryId).map((c) => c.id);
+                    const catIds = [b.categoryId, ...subIds];
+                    const spent = transactions
+                      .filter((t) => catIds.includes(t.categoryId) && t.type === 'expense')
+                      .reduce((sum, t) => sum + t.amount, 0);
+
+                    const limit = b.limitAmount + (b.rolloverAmount || 0);
+                    const remaining = Math.max(0, limit - spent);
+                    const percent = Math.min(100, Math.round((spent / limit) * 100));
+
+                    return (
+                      <div
+                        key={b.id}
+                        className="p-2 rounded-xl bg-slate-50/70 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60 space-y-1 hover:bg-slate-100/60 dark:hover:bg-slate-800 transition-colors"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold text-slate-800 dark:text-white truncate max-w-[140px]">
+                            {cat?.name || 'Anggaran'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onProcessRollover(b);
+                            }}
+                            className="p-0.5 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 rounded"
+                            title="Proses Rollover"
+                          >
+                            <RotateCcw className="w-3 h-3" />
+                          </button>
+                        </div>
+
+                        <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-1.5 overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-slate-900 dark:bg-white transition-all"
+                            style={{ width: `${percent}%` }}
+                          />
+                        </div>
+
+                        <div className="flex items-center justify-between text-[10px] font-mono text-slate-500 dark:text-slate-400">
+                          <span>Terbayar: {formatCompactRupiah(spent)}</span>
+                          <span className="font-semibold text-slate-800 dark:text-slate-200">
+                            Sisa: {formatCompactRupiah(remaining)}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="text-[10px] text-slate-400 dark:text-slate-500 pt-1 border-t border-slate-100 dark:border-slate-800 flex justify-between">
+                  <span className="group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">Buka Halaman Anggaran →</span>
+                  <span className="font-mono text-slate-600 dark:text-slate-300 font-semibold">{budgets.length} pos</span>
+                </div>
+              </div>
+            )}
+
+            {/* 4. KANBAN TARGET TABUNGAN */}
+            {showGoals && (
+              <div
+                onClick={() => onNavigateTab('accounts')}
+                className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 p-3 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between h-[210px] cursor-pointer group"
+                title="Klik untuk membuka Halaman Target Tabungan"
+              >
+                <div className="flex items-center justify-between pb-1.5 border-b border-slate-100 dark:border-slate-800">
+                  <span className="w-4" />
+                  <h2 className="text-xs font-bold text-slate-800 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors tracking-tight text-center flex-1 flex items-center justify-center gap-1.5">
+                    <span>Target Tabungan</span>
+                    <span className="text-[10px] text-slate-400 dark:text-slate-500 group-hover:text-blue-600 font-normal">→</span>
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onNavigateTab('accounts');
+                    }}
+                    className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 p-0.5"
+                    title="Buka Tabungan"
+                  >
+                    <PiggyBank className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {/* List Tabungan */}
+                <div className="flex-1 overflow-y-auto no-scrollbar space-y-2 py-1.5">
+                  {goals.slice(0, 10).map((g) => {
+                    const percent = Math.min(100, Math.round((g.currentAmount / g.targetAmount) * 100));
+                    return (
+                      <div
+                        key={g.id}
+                        className="p-2 rounded-xl bg-slate-50/70 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60 space-y-1 hover:bg-slate-100/60 dark:hover:bg-slate-800 transition-colors"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold text-slate-800 dark:text-white truncate max-w-[140px]">
+                            {g.name}
+                          </span>
+                          <span className="text-[10px] font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                            {percent}%
+                          </span>
+                        </div>
+
+                        <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-1.5 overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-emerald-500 transition-all"
+                            style={{ width: `${percent}%` }}
+                          />
+                        </div>
+
+                        <div className="flex items-center justify-between text-[10px] font-mono text-slate-500 dark:text-slate-400">
+                          <span>Terkumpul: {formatCompactRupiah(g.currentAmount)}</span>
+                          <span className="font-semibold text-slate-800 dark:text-slate-200">
+                            Target: {formatCompactRupiah(g.targetAmount)}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="text-[10px] text-slate-400 dark:text-slate-500 pt-1 border-t border-slate-100 dark:border-slate-800 flex justify-between">
+                  <span className="group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">Buka Halaman Tabungan →</span>
+                  <span className="font-mono text-slate-600 dark:text-slate-300 font-semibold">{goals.length} target</span>
+                </div>
+              </div>
+            )}
+
+            {/* 5. KANBAN TAGIHAN RUTIN */}
+            {showBills && (
+              <div
+                onClick={() => onNavigateTab('budgets')}
+                className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 p-3 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between h-[210px] cursor-pointer group"
+                title="Klik untuk membuka Halaman Tagihan"
+              >
+                <div className="flex items-center justify-between pb-1.5 border-b border-slate-100 dark:border-slate-800">
+                  <span className="w-4" />
+                  <h2 className="text-xs font-bold text-slate-800 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors tracking-tight text-center flex-1 flex items-center justify-center gap-1.5">
+                    <span>Tagihan Rutin</span>
+                    <span className="text-[10px] text-slate-400 dark:text-slate-500 group-hover:text-blue-600 font-normal">→</span>
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onNavigateTab('budgets');
+                    }}
+                    className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 p-0.5"
+                    title="Buka Tagihan"
+                  >
+                    <Receipt className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {/* List Tagihan */}
+                <div className="flex-1 overflow-y-auto no-scrollbar space-y-1.5 py-1.5">
+                  {bills.slice(0, 10).map((b) => (
+                    <div
+                      key={b.id}
+                      className="p-1.5 rounded-xl bg-slate-50/70 dark:bg-slate-800/60 hover:bg-slate-100/70 dark:hover:bg-slate-800 transition-all flex items-center justify-between gap-2"
+                    >
+                      <div className="min-w-0">
+                        <div className="text-[11px] font-bold text-slate-800 dark:text-white truncate max-w-[150px]">
+                          {b.name}
+                        </div>
+                        <div className="text-[9px] text-slate-400 dark:text-slate-500 font-mono">
+                          Jatuh tempo tgl {b.dueDay}
+                        </div>
+                      </div>
+                      <div className="text-[11px] font-bold text-rose-600 dark:text-rose-400 font-mono whitespace-nowrap">
+                        {formatRupiah(b.amount)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="text-[10px] text-slate-400 dark:text-slate-500 pt-1 border-t border-slate-100 dark:border-slate-800 flex justify-between">
+                  <span className="group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">Buka Halaman Tagihan →</span>
+                  <span className="font-mono text-slate-600 dark:text-slate-300 font-semibold">{bills.length} tagihan</span>
+                </div>
+              </div>
+            )}
+
+            {/* 6. KANBAN HUTANG & PIUTANG */}
+            {showDebts && (
+              <div
+                onClick={() => onNavigateTab('debts')}
+                className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 p-3 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between h-[210px] cursor-pointer group"
+                title="Klik untuk membuka Halaman Hutang & Piutang"
+              >
+                <div className="flex items-center justify-between pb-1.5 border-b border-slate-100 dark:border-slate-800">
+                  <span className="w-4" />
+                  <h2 className="text-xs font-bold text-slate-800 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors tracking-tight text-center flex-1 flex items-center justify-center gap-1.5">
+                    <span>Hutang & Piutang</span>
+                    <span className="text-[10px] text-slate-400 dark:text-slate-500 group-hover:text-blue-600 font-normal">→</span>
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onNavigateTab('debts');
+                    }}
+                    className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 p-0.5"
+                    title="Buka Hutang & Piutang"
+                  >
+                    <Scale className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {/* List Hutang/Piutang */}
+                <div className="flex-1 overflow-y-auto no-scrollbar space-y-1.5 py-1.5">
+                  {debts.slice(0, 10).map((d) => {
+                    const remaining = Math.max(0, d.totalAmount - d.paidAmount);
+                    const isDebt = d.type === 'debt';
+                    return (
+                      <div
+                        key={d.id}
+                        className="p-1.5 rounded-xl bg-slate-50/70 dark:bg-slate-800/60 hover:bg-slate-100/70 dark:hover:bg-slate-800 transition-all flex items-center justify-between gap-2"
+                      >
+                        <div className="min-w-0">
+                          <div className="text-[11px] font-bold text-slate-800 dark:text-white truncate max-w-[140px]">
+                            {d.personName}
+                          </div>
+                          <div className={`text-[9px] font-medium ${isDebt ? 'text-rose-500' : 'text-emerald-500'}`}>
+                            {isDebt ? 'Hutang' : 'Piutang'} · {d.status === 'settled' ? 'Lunas' : 'Aktif'}
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <div className="text-[11px] font-bold font-mono text-slate-800 dark:text-white">
+                            {formatRupiah(remaining)}
+                          </div>
+                          <div className="text-[9px] text-slate-400 dark:text-slate-500 font-mono">
+                            dari {formatCompactRupiah(d.totalAmount)}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="text-[10px] text-slate-400 dark:text-slate-500 pt-1 border-t border-slate-100 dark:border-slate-800 flex justify-between">
+                  <span className="group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">Buka Hutang & Piutang →</span>
+                  <span className="font-mono text-slate-600 dark:text-slate-300 font-semibold">{debts.length} catatan</span>
+                </div>
+              </div>
+            )}
           </div>
-        </div>
-      </div>
+        );
+      })()}
     </div>
   );
 };

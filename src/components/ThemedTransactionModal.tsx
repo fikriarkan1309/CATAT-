@@ -82,20 +82,39 @@ export const ThemedTransactionModal: React.FC<ThemedTransactionModalProps> = ({
   );
   const parentCategories = relevantCategories.filter((c) => !c.parentId);
 
+  // PERBAIKAN BUG 1: Setiap modal dibuka, semua input (nominal, dari, ke, catatan) DEFAULTNYA KOSONG
   useEffect(() => {
-    if (defaultAccountId) {
-      setAccountId(defaultAccountId);
-    }
-  }, [defaultAccountId]);
+    if (isOpen) {
+      setAmountStr('');
+      setPartyFrom('');
+      setPartyTo('');
+      setNotes('');
+      setIsGuiltFree(false);
+      setTxnDate(new Date().toISOString().split('T')[0]);
 
-  useEffect(() => {
-    if (parentCategories.length > 0 && !selectedParentId) {
-      const firstParent = parentCategories[0];
-      setSelectedParentId(firstParent.id);
-      const firstSub = relevantCategories.find((c) => c.parentId === firstParent.id);
-      setSelectedCategoryId(firstSub ? firstSub.id : firstParent.id);
+      const initialSource = defaultAccountId || accounts[0]?.id || '';
+      setAccountId(initialSource);
+      const initialTarget = accounts.find((a) => a.id !== initialSource);
+      setTargetAccountId(initialTarget ? initialTarget.id : '');
+
+      if (type !== 'transfer') {
+        const relevant = categories.filter((c) => c.type === type);
+        const parents = relevant.filter((c) => !c.parentId);
+        if (parents.length > 0) {
+          const firstParent = parents[0];
+          setSelectedParentId(firstParent.id);
+          const firstSub = relevant.find((c) => c.parentId === firstParent.id);
+          setSelectedCategoryId(firstSub ? firstSub.id : firstParent.id);
+        } else {
+          setSelectedParentId('');
+          setSelectedCategoryId('');
+        }
+      } else {
+        setSelectedParentId('');
+        setSelectedCategoryId('');
+      }
     }
-  }, [relevantCategories, type]);
+  }, [isOpen, type, defaultAccountId, accounts]);
 
   if (!isOpen) return null;
 
@@ -160,14 +179,14 @@ export const ThemedTransactionModal: React.FC<ThemedTransactionModalProps> = ({
 
     onSave({
       accountId,
-      categoryId: selectedCategoryId || selectedParentId || categories[0]?.id,
+      categoryId: type === 'transfer' ? 'transfer' : (selectedCategoryId || selectedParentId || categories[0]?.id || ''),
       userId: activeRole === 'husband' ? 'usr-husband-fikri-01' : 'usr-wife-alya-02',
       amount: numericAmount,
       type,
       targetAccountId: type === 'transfer' ? targetAccountId : null,
       partyFrom: type === 'transfer' ? '' : partyFrom.trim(),
       partyTo: type === 'transfer' ? '' : partyTo.trim(),
-      tags: [type === 'expense' ? 'Operasional' : 'Pemasukan'],
+      tags: type === 'transfer' ? ['Transfer Antar Rekening'] : [type === 'expense' ? 'Operasional' : 'Pemasukan'],
       notes: notes.trim(),
       transactionDate: txnDate
         ? new Date(txnDate.includes('T') ? txnDate : `${txnDate}T12:00:00`).toISOString()
@@ -176,6 +195,12 @@ export const ThemedTransactionModal: React.FC<ThemedTransactionModalProps> = ({
       guiltFreeOwner: isGuiltFree ? activeRole : null,
     });
 
+    // Reset input fields
+    setAmountStr('');
+    setPartyFrom('');
+    setPartyTo('');
+    setNotes('');
+    setIsGuiltFree(false);
     onClose();
   };
 

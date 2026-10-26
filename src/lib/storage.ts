@@ -1048,6 +1048,16 @@ class OfflineStorageEngine {
       input.targetAccountId
     );
 
+    // PERBAIKAN BUG 2: Rekening yang digunakan pasca transaksi berpindah ke paling atas dari urutan semuanya
+    const usedAccIds = [input.accountId];
+    if (input.type === 'transfer' && input.targetAccountId) {
+      usedAccIds.push(input.targetAccountId);
+    }
+    const usedAccSet = new Set(usedAccIds);
+    const usedAccs = this.state.accounts.filter((a) => usedAccSet.has(a.id));
+    const otherAccs = this.state.accounts.filter((a) => !usedAccSet.has(a.id));
+    this.state.accounts = [...usedAccs, ...otherAccs];
+
     if (input.isGuiltFree && input.guiltFreeOwner) {
       this.state.guiltFree[input.guiltFreeOwner].spent += input.amount;
     }
@@ -1100,6 +1110,18 @@ class OfflineStorageEngine {
       updatedTxn.type,
       updatedTxn.targetAccountId
     );
+
+    // Pindahkan rekening yang digunakan ke paling atas dari urutan semuanya
+    if (updatedTxn.accountId) {
+      const usedAccIds = [updatedTxn.accountId];
+      if (updatedTxn.type === 'transfer' && updatedTxn.targetAccountId) {
+        usedAccIds.push(updatedTxn.targetAccountId);
+      }
+      const usedAccSet = new Set(usedAccIds);
+      const usedAccs = this.state.accounts.filter((a) => usedAccSet.has(a.id));
+      const otherAccs = this.state.accounts.filter((a) => !usedAccSet.has(a.id));
+      this.state.accounts = [...usedAccs, ...otherAccs];
+    }
 
     this.state.transactions = this.state.transactions.map((t) =>
       t.id === id ? updatedTxn : t
@@ -2153,21 +2175,22 @@ class OfflineStorageEngine {
         })).filter((a: Account) => !a.isDeleted);
 
         const accMap = new Map<string, Account>();
+        // Pertahankan urutan lokal terlebih dahulu (rekening yang baru digunakan tetap di paling atas)
+        for (const la of this.state.accounts) {
+          if (la.isDeleted) continue;
+          accMap.set(la.id, la);
+        }
         for (const ra of remoteAccs) {
           const pending = pendingMap.get(ra.id);
           if (pending && pending.operation === 'DELETE') continue;
           if (pending && (pending.operation === 'UPDATE' || pending.operation === 'INSERT')) {
             accMap.set(ra.id, pending.payload as Account);
           } else {
-            accMap.set(ra.id, ra);
-          }
-        }
-        for (const la of this.state.accounts) {
-          if (la.isDeleted) continue;
-          const pending = pendingMap.get(la.id);
-          if (pending && pending.operation === 'DELETE') continue;
-          if (!accMap.has(la.id) || pending) {
-            accMap.set(la.id, la);
+            if (accMap.has(ra.id)) {
+              accMap.set(ra.id, { ...accMap.get(ra.id)!, ...ra });
+            } else {
+              accMap.set(ra.id, ra);
+            }
           }
         }
         this.state.accounts = Array.from(accMap.values());
@@ -2534,6 +2557,18 @@ class OfflineStorageEngine {
         this.state.transactions = [tx, ...this.state.transactions].sort(
           (a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime()
         );
+      }
+
+      // PERBAIKAN BUG 2: Rekening yang digunakan pasca transaksi berpindah ke paling atas dari urutan semuanya
+      if (tx.accountId) {
+        const usedAccIds = [tx.accountId];
+        if (tx.type === 'transfer' && tx.targetAccountId) {
+          usedAccIds.push(tx.targetAccountId);
+        }
+        const usedAccSet = new Set(usedAccIds);
+        const usedAccs = this.state.accounts.filter((a) => usedAccSet.has(a.id));
+        const otherAccs = this.state.accounts.filter((a) => !usedAccSet.has(a.id));
+        this.state.accounts = [...usedAccs, ...otherAccs];
       }
 
       this.recalculateAccountBalances();

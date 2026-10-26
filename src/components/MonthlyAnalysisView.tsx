@@ -5,6 +5,7 @@ import {
   Search,
   ArrowUpRight,
   ArrowDownRight,
+  ArrowLeftRight,
   X,
   Layers,
 } from 'lucide-react';
@@ -22,6 +23,7 @@ interface MonthSummaryData {
   label: string;
   income: number;
   expense: number;
+  transfer: number;
   total: number;
 }
 
@@ -90,10 +92,10 @@ export const MonthlyAnalysisView: React.FC<MonthlyAnalysisViewProps> = ({
   const [activeTab, setActiveTab] = useState<'overview' | 'compare'>('overview');
   const [subView, setSubView] = useState<'list' | 'detail'>('list');
   const [selectedMonthKey, setSelectedMonthKey] = useState<string>('2026-10');
-  const [selectedFlowType, setSelectedFlowType] = useState<'expense' | 'income'>('expense');
+  const [selectedFlowType, setSelectedFlowType] = useState<'expense' | 'income' | 'transfer'>('expense');
   const [isChoiceModalOpen, setIsChoiceModalOpen] = useState(false);
   const [targetMonthForChoice, setTargetMonthForChoice] = useState<MonthSummaryData>(
-    BASELINE_MONTHS[0] || { key: '2026-10', label: 'Bulan Ini', income: 0, expense: 0, total: 0 }
+    BASELINE_MONTHS[0] || { key: '2026-10', label: 'Bulan Ini', income: 0, expense: 0, transfer: 0, total: 0 }
   );
   const [hoveredSlice, setHoveredSlice] = useState<number | null>(null);
   const [searchKeyword, setSearchKeyword] = useState('');
@@ -108,8 +110,9 @@ export const MonthlyAnalysisView: React.FC<MonthlyAnalysisViewProps> = ({
   const [compFrom2, setCompFrom2] = useState('2026-09-01');
   const [compTo2, setCompTo2] = useState('2026-09-30');
 
+  // PERBAIKAN BUG 3: Transfer antar rekening berdiri sendiri (TIDAK dihitung di pemasukan maupun pengeluaran)
   const dynamicMonthsMap = React.useMemo(() => {
-    const map = new Map<string, { income: number; expense: number; transactions: Transaction[] }>();
+    const map = new Map<string, { income: number; expense: number; transfer: number; transactions: Transaction[] }>();
 
     transactions.forEach((t) => {
       const d = new Date(t.transactionDate);
@@ -117,12 +120,13 @@ export const MonthlyAnalysisView: React.FC<MonthlyAnalysisViewProps> = ({
         ? t.transactionDate.slice(0, 7)
         : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       if (!map.has(ym)) {
-        map.set(ym, { income: 0, expense: 0, transactions: [] });
+        map.set(ym, { income: 0, expense: 0, transfer: 0, transactions: [] });
       }
       const item = map.get(ym)!;
       item.transactions.push(t);
       if (t.type === 'income') item.income += t.amount;
-      if (t.type === 'expense') item.expense += t.amount;
+      else if (t.type === 'expense') item.expense += t.amount;
+      else if (t.type === 'transfer') item.transfer += t.amount;
     });
 
     return map;
@@ -143,6 +147,7 @@ export const MonthlyAnalysisView: React.FC<MonthlyAnalysisViewProps> = ({
           label: bm.label,
           income: userDyn.income,
           expense: userDyn.expense,
+          transfer: userDyn.transfer,
           total: userDyn.income - userDyn.expense,
         });
       } else {
@@ -159,6 +164,7 @@ export const MonthlyAnalysisView: React.FC<MonthlyAnalysisViewProps> = ({
           label: `${monthName} ${year}`,
           income: val.income,
           expense: val.expense,
+          transfer: val.transfer,
           total: val.income - val.expense,
         });
       }
@@ -168,7 +174,7 @@ export const MonthlyAnalysisView: React.FC<MonthlyAnalysisViewProps> = ({
   }, [dynamicMonthsMap]);
 
   const currentMonthIdx = mergedMonthsList.findIndex((m) => m.key === selectedMonthKey);
-  const fallbackMonth: MonthSummaryData = { key: '2026-10', label: 'Bulan Ini', income: 0, expense: 0, total: 0 };
+  const fallbackMonth: MonthSummaryData = { key: '2026-10', label: 'Bulan Ini', income: 0, expense: 0, transfer: 0, total: 0 };
   const currentMonthData = mergedMonthsList[currentMonthIdx] || mergedMonthsList[0] || fallbackMonth;
 
   const handleMonthClick = (m: MonthSummaryData) => {
@@ -176,7 +182,7 @@ export const MonthlyAnalysisView: React.FC<MonthlyAnalysisViewProps> = ({
     setIsChoiceModalOpen(true);
   };
 
-  const handleSelectFlowFromModal = (type: 'expense' | 'income') => {
+  const handleSelectFlowFromModal = (type: 'expense' | 'income' | 'transfer') => {
     setSelectedMonthKey(targetMonthForChoice.key);
     setSelectedFlowType(type);
     setIsChoiceModalOpen(false);
@@ -197,10 +203,24 @@ export const MonthlyAnalysisView: React.FC<MonthlyAnalysisViewProps> = ({
 
   const getCategoryBreakdown = () => {
     const isOct = selectedMonthKey === '2026-10';
-    const total = selectedFlowType === 'income' ? currentMonthData.income : currentMonthData.expense;
-
     const userBucket = dynamicMonthsMap.get(selectedMonthKey);
     const txns = userBucket ? userBucket.transactions : [];
+
+    // Transfer antar rekening berdiri sendiri: tidak mengambil kategori apapun
+    if (selectedFlowType === 'transfer') {
+      const transferTxns = txns.filter((t) => t.type === 'transfer');
+      const totalTransfer = transferTxns.reduce((sum, t) => sum + t.amount, 0);
+      return [
+        {
+          name: 'Transfer Antar Rekening',
+          percentage: 100,
+          amount: totalTransfer,
+          color: '#3B82F6',
+        },
+      ];
+    }
+
+    const total = selectedFlowType === 'income' ? currentMonthData.income : currentMonthData.expense;
 
     if (txns.length === 0) {
       if (isOct) {
@@ -219,12 +239,15 @@ export const MonthlyAnalysisView: React.FC<MonthlyAnalysisViewProps> = ({
       }
     }
 
+    // Hanya ambil kategori pengeluaran/pemasukan murni dan filter strictly t.type === selectedFlowType
     const parentCats = categories.filter((c) => !c.parentId && c.type === selectedFlowType);
     const result = parentCats
       .map((p) => {
         const subIds = categories.filter((c) => c.parentId === p.id).map((c) => c.id);
         const allIds = [p.id, ...subIds];
-        const sum = txns.filter((t) => allIds.includes(t.categoryId)).reduce((s, t) => s + t.amount, 0);
+        const sum = txns
+          .filter((t) => t.type === selectedFlowType && allIds.includes(t.categoryId))
+          .reduce((s, t) => s + t.amount, 0);
         const percentage = total > 0 ? Math.round((sum / total) * 100) : 0;
         return {
           name: p.name,
@@ -285,6 +308,9 @@ export const MonthlyAnalysisView: React.FC<MonthlyAnalysisViewProps> = ({
   const getTransactionsForCategoryModal = (catName: string) => {
     const userBucket = dynamicMonthsMap.get(selectedMonthKey);
     const realTxns = (userBucket?.transactions || []).filter((t) => {
+      if (selectedFlowType === 'transfer') {
+        return t.type === 'transfer';
+      }
       if (t.type !== selectedFlowType) return false;
       const cat = categories.find((c) => c.id === t.categoryId);
       const parent = cat?.parentId ? categories.find((c) => c.id === cat.parentId) : null;
@@ -294,11 +320,15 @@ export const MonthlyAnalysisView: React.FC<MonthlyAnalysisViewProps> = ({
     if (realTxns.length > 0) {
       return realTxns.map((t) => {
         const acc = accounts.find((a) => a.id === t.accountId);
+        const targetAcc = t.targetAccountId ? accounts.find((a) => a.id === t.targetAccountId) : null;
+        const isTransfer = t.type === 'transfer';
         return {
           id: t.id,
           date: formatDateIndo(t.transactionDate),
-          title: t.notes || catName,
-          accountName: acc?.name || 'BCA Utama',
+          title: isTransfer ? 'Transfer Antar Rekening' : (t.notes || catName),
+          accountName: isTransfer && targetAcc
+            ? `${acc?.name || 'Rekening'} ➔ ${targetAcc.name}`
+            : (acc?.name || 'BCA Utama'),
           amount: t.amount,
         };
       });
@@ -510,6 +540,30 @@ export const MonthlyAnalysisView: React.FC<MonthlyAnalysisViewProps> = ({
                   {formatRupiahDetailed(-targetMonthForChoice.expense)}
                 </span>
               </button>
+
+              {/* PERBAIKAN BUG 3: Transfer antar rekening berdiri sendiri */}
+              <button
+                type="button"
+                onClick={() => handleSelectFlowFromModal('transfer')}
+                className="w-full px-3.5 py-2.5 rounded-2xl border border-blue-500 bg-blue-50/70 dark:bg-blue-950/40 hover:bg-blue-100/80 dark:hover:bg-blue-900/50 text-left transition-all flex items-center justify-between group shadow-2xs"
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-2xs group-hover:scale-105 transition-transform">
+                    <ArrowLeftRight className="w-4 h-4 stroke-[2.5]" />
+                  </div>
+                  <div>
+                    <span className="text-xs sm:text-sm font-bold text-blue-950 dark:text-blue-100 block">
+                      Transfer Antar Rekening
+                    </span>
+                    <span className="text-[10px] text-blue-600 dark:text-blue-400 font-medium">
+                      Berdiri Sendiri (Bukan Beban/Pendapatan)
+                    </span>
+                  </div>
+                </div>
+                <span className="text-xs sm:text-sm font-extrabold font-mono text-blue-700 dark:text-blue-300">
+                  {formatRupiahDetailed(targetMonthForChoice.transfer || 0)}
+                </span>
+              </button>
             </div>
 
             <button
@@ -524,7 +578,7 @@ export const MonthlyAnalysisView: React.FC<MonthlyAnalysisViewProps> = ({
       )}
 
       {/* ========================================================================= */}
-      {/* 2. TAMPILAN DETAIL: PEMASUKAN & PENGELUARAN */}
+      {/* 2. TAMPILAN DETAIL: PEMASUKAN & PENGELUARAN & TRANSFER */}
       {activeTab === 'overview' && subView === 'detail' && (
         <div className="space-y-3">
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-2.5 sm:p-3 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
@@ -554,11 +608,11 @@ export const MonthlyAnalysisView: React.FC<MonthlyAnalysisViewProps> = ({
               </button>
             </div>
 
-            <div className="flex p-0.5 bg-slate-100 dark:bg-slate-800 rounded-xl self-center sm:self-auto">
+            <div className="flex p-0.5 bg-slate-100 dark:bg-slate-800 rounded-xl self-center sm:self-auto gap-0.5">
               <button
                 type="button"
                 onClick={() => setSelectedFlowType('expense')}
-                className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
+                className={`px-2.5 sm:px-3 py-1 text-xs font-bold rounded-lg transition-all ${
                   selectedFlowType === 'expense'
                     ? 'bg-rose-600 text-white shadow-xs'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -569,13 +623,24 @@ export const MonthlyAnalysisView: React.FC<MonthlyAnalysisViewProps> = ({
               <button
                 type="button"
                 onClick={() => setSelectedFlowType('income')}
-                className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
+                className={`px-2.5 sm:px-3 py-1 text-xs font-bold rounded-lg transition-all ${
                   selectedFlowType === 'income'
                     ? 'bg-emerald-600 text-white shadow-xs'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
                 Pemasukan
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedFlowType('transfer')}
+                className={`px-2.5 sm:px-3 py-1 text-xs font-bold rounded-lg transition-all ${
+                  selectedFlowType === 'transfer'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                Transfer Antar Rekening
               </button>
             </div>
           </div>
@@ -645,6 +710,18 @@ export const MonthlyAnalysisView: React.FC<MonthlyAnalysisViewProps> = ({
                       100,00%
                     </span>
                   </>
+                ) : selectedFlowType === 'transfer' ? (
+                  <>
+                    <span className="text-[10px] sm:text-[11px] text-blue-300 font-bold">
+                      Transfer Antar Rekening
+                    </span>
+                    <span className="text-xs sm:text-sm font-extrabold font-mono mt-0.5 text-blue-400">
+                      {formatRupiahDetailed(detailTotalAmount)}
+                    </span>
+                    <span className="text-[10px] text-blue-300 font-mono font-bold mt-0.5">
+                      Berdiri Sendiri
+                    </span>
+                  </>
                 ) : (
                   <>
                     <span className="text-[10px] sm:text-[11px] text-slate-300 font-bold">
@@ -701,7 +778,11 @@ export const MonthlyAnalysisView: React.FC<MonthlyAnalysisViewProps> = ({
                       </span>
                       <span
                         className={`text-xs sm:text-sm font-bold tabular-nums min-w-[120px] ${
-                          selectedFlowType === 'income' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-900 dark:text-white'
+                          selectedFlowType === 'income'
+                            ? 'text-emerald-600 dark:text-emerald-400'
+                            : selectedFlowType === 'transfer'
+                            ? 'text-blue-600 dark:text-blue-400'
+                            : 'text-slate-900 dark:text-white'
                         }`}
                       >
                         {formatRupiahDetailed(selectedFlowType === 'expense' ? -item.amount : item.amount)}
@@ -718,7 +799,11 @@ export const MonthlyAnalysisView: React.FC<MonthlyAnalysisViewProps> = ({
               </span>
               <span
                 className={`text-sm sm:text-base font-extrabold tabular-nums ${
-                  selectedFlowType === 'income' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+                  selectedFlowType === 'income'
+                    ? 'text-emerald-600 dark:text-emerald-400'
+                    : selectedFlowType === 'transfer'
+                    ? 'text-blue-600 dark:text-blue-400'
+                    : 'text-rose-600 dark:text-rose-400'
                 }`}
               >
                 {formatRupiahDetailed(detailTotalAmount)}

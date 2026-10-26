@@ -321,9 +321,11 @@ export const RecentTransactions: React.FC<RecentTransactionsProps> = ({
                   const accountName = getAccountName(tx.accountId);
                   const targetAccountName = isTransfer ? getAccountName(tx.targetAccountId || undefined) : '';
 
-                  const displayName = cat?.name || tx.notes || 'Transaksi';
+                  const displayName = isTransfer
+                    ? 'Transfer Antar Rekening'
+                    : (cat?.name || tx.notes || 'Transaksi');
                   const displaySub = isTransfer
-                    ? `${accountName} ➔ ${targetAccountName}`
+                    ? `${accountName} ➔ ${targetAccountName}${tx.notes && tx.notes !== 'Transfer Antar Rekening' ? ` · ${tx.notes}` : ''}`
                     : tx.notes && cat?.name
                     ? `${accountName} · ${tx.notes}`
                     : accountName;
@@ -478,7 +480,9 @@ export const RecentTransactions: React.FC<RecentTransactionsProps> = ({
                 </div>
                 <div>
                   <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
-                    {getCategory(selectedTransactionForDetail.categoryId)?.name || 'Transaksi'}
+                    {selectedTransactionForDetail.type === 'transfer'
+                      ? 'Transfer Antar Rekening'
+                      : (getCategory(selectedTransactionForDetail.categoryId)?.name || 'Transaksi')}
                   </h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">
                     {formatDateIndo(selectedTransactionForDetail.transactionDate)}

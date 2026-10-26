@@ -63,6 +63,21 @@ export const TransactionFormModal: React.FC<TransactionFormModalProps> = ({
     new Date().toISOString().split('T')[0]
   );
 
+  React.useEffect(() => {
+    if (isOpen) {
+      setAmountStr('');
+      setNotes('');
+      setCustomTagInput('');
+      setIsGuiltFree(false);
+      setTxnDate(new Date().toISOString().split('T')[0]);
+      if (accounts.length > 0) {
+        setAccountId(accounts[0].id);
+        const second = accounts.find((a) => a.id !== accounts[0].id);
+        setTargetAccountId(second ? second.id : '');
+      }
+    }
+  }, [isOpen, accounts]);
+
   if (!isOpen) return null;
 
   // Filter categories by type
