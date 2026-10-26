@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   X,
   CreditCard,
@@ -82,9 +82,17 @@ export const ThemedTransactionModal: React.FC<ThemedTransactionModalProps> = ({
   );
   const parentCategories = relevantCategories.filter((c) => !c.parentId);
 
-  // PERBAIKAN BUG 1: Setiap modal dibuka, semua input (nominal, dari, ke, catatan) DEFAULTNYA KOSONG
+  const prevIsOpenRef = useRef(false);
+  const accountsRef = useRef(accounts);
+  accountsRef.current = accounts;
+  const categoriesRef = useRef(categories);
+  categoriesRef.current = categories;
+
+  // PERBAIKAN BUG: Isian modal HANYA diinisialisasi ketika modal baru saja dibuka (transisi tertutup -> terbuka).
+  // JANGAN me-reset saat user sedang mengetik (misal karena background sync / heartbeat setiap 6 detik).
+  // Isian akan direset bersih PASCA SUBMIT pada handleSubmit.
   useEffect(() => {
-    if (isOpen) {
+    if (!prevIsOpenRef.current && isOpen) {
       setAmountStr('');
       setPartyFrom('');
       setPartyTo('');
@@ -92,13 +100,15 @@ export const ThemedTransactionModal: React.FC<ThemedTransactionModalProps> = ({
       setIsGuiltFree(false);
       setTxnDate(new Date().toISOString().split('T')[0]);
 
-      const initialSource = defaultAccountId || accounts[0]?.id || '';
+      const accs = accountsRef.current;
+      const cats = categoriesRef.current;
+      const initialSource = defaultAccountId || accs[0]?.id || '';
       setAccountId(initialSource);
-      const initialTarget = accounts.find((a) => a.id !== initialSource);
+      const initialTarget = accs.find((a) => a.id !== initialSource);
       setTargetAccountId(initialTarget ? initialTarget.id : '');
 
       if (type !== 'transfer') {
-        const relevant = categories.filter((c) => c.type === type);
+        const relevant = cats.filter((c) => c.type === type);
         const parents = relevant.filter((c) => !c.parentId);
         if (parents.length > 0) {
           const firstParent = parents[0];
@@ -114,7 +124,8 @@ export const ThemedTransactionModal: React.FC<ThemedTransactionModalProps> = ({
         setSelectedCategoryId('');
       }
     }
-  }, [isOpen, type, defaultAccountId, accounts]);
+    prevIsOpenRef.current = isOpen;
+  }, [isOpen, type, defaultAccountId]);
 
   if (!isOpen) return null;
 

@@ -63,20 +63,26 @@ export const TransactionFormModal: React.FC<TransactionFormModalProps> = ({
     new Date().toISOString().split('T')[0]
   );
 
+  const prevIsOpenRef = React.useRef(false);
+  const accountsRef = React.useRef(accounts);
+  accountsRef.current = accounts;
+
   React.useEffect(() => {
-    if (isOpen) {
+    if (!prevIsOpenRef.current && isOpen) {
       setAmountStr('');
       setNotes('');
       setCustomTagInput('');
       setIsGuiltFree(false);
       setTxnDate(new Date().toISOString().split('T')[0]);
-      if (accounts.length > 0) {
-        setAccountId(accounts[0].id);
-        const second = accounts.find((a) => a.id !== accounts[0].id);
+      const accs = accountsRef.current;
+      if (accs.length > 0) {
+        setAccountId(accs[0].id);
+        const second = accs.find((a) => a.id !== accs[0].id);
         setTargetAccountId(second ? second.id : '');
       }
     }
-  }, [isOpen, accounts]);
+    prevIsOpenRef.current = isOpen;
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -139,6 +145,11 @@ export const TransactionFormModal: React.FC<TransactionFormModalProps> = ({
       guiltFreeOwner: isGuiltFree ? activeRole : null,
     });
 
+    // Reset form pasca submit
+    setAmountStr('');
+    setNotes('');
+    setCustomTagInput('');
+    setIsGuiltFree(false);
     onClose();
   };
 
