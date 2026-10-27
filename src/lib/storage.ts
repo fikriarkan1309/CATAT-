@@ -151,6 +151,7 @@ class OfflineStorageEngine {
               debts: Array.isArray(parsed.debts) ? parsed.debts : INITIAL_DEBTS,
             };
             this.recalculateAccountBalances();
+            this.reconcilePaidBillsTransactions();
           } catch {
             // fallback
           }
@@ -1517,6 +1518,23 @@ class OfflineStorageEngine {
       retryCount: 0,
     });
 
+    this.state.syncQueue.push({
+      id: this.generateUUID(),
+      entityTable: 'transactions',
+      entityId: txn.id,
+      operation: 'INSERT',
+      payload: txn,
+      clientTimestamp: now,
+      status: 'pending',
+      retryCount: 0,
+    });
+
+    const sourceAcc = this.state.accounts.find((a) => a.id === sourceAccountId);
+    if (sourceAcc) {
+      this.queueAccountUpsert(sourceAcc);
+    }
+    this.recalculateAccountBalances();
+
     this.persist();
     if (this.isOnline()) {
       this.triggerSync();
@@ -1652,7 +1670,38 @@ class OfflineStorageEngine {
     };
     this.state.transactions = [txn, ...this.state.transactions];
 
+    this.state.syncQueue.push({
+      id: this.generateUUID(),
+      entityTable: 'goals',
+      entityId: goalId,
+      operation: 'UPDATE',
+      payload: updatedGoal,
+      clientTimestamp: now,
+      status: 'pending',
+      retryCount: 0,
+    });
+
+    this.state.syncQueue.push({
+      id: this.generateUUID(),
+      entityTable: 'transactions',
+      entityId: txn.id,
+      operation: 'INSERT',
+      payload: txn,
+      clientTimestamp: now,
+      status: 'pending',
+      retryCount: 0,
+    });
+
+    const targetAcc = this.state.accounts.find((a) => a.id === targetAccountId);
+    if (targetAcc) {
+      this.queueAccountUpsert(targetAcc);
+    }
+    this.recalculateAccountBalances();
+
     this.persist();
+    if (this.isOnline()) {
+      this.triggerSync();
+    }
   }
 
   // --- RECURRING BILLS MANAGEMENT ---
@@ -1760,15 +1809,21 @@ class OfflineStorageEngine {
     bill.lastPaidDate = now;
     bill.updatedAt = now;
 
-    this.state.accounts = this.state.accounts.map((acc) => {
-      if (acc.id === accountId) {
-        return { ...acc, balance: acc.balance - bill.amount, updatedAt: now };
-      }
-      return acc;
-    });
+    // Gunakan ID deterministik berdasarkan billId dan bulan agar sinkronisasi antar perangkat tidak menghasilkan duplikasi
+    const txnId = `txn-bill-${bill.id}-${currentMonth}`;
+
+    const existingTxnIndex = this.state.transactions.findIndex(
+      (t) =>
+        t.id === txnId ||
+        (!t.isDeleted &&
+          t.type === 'expense' &&
+          t.tags?.includes('Tagihan Rutin') &&
+          (t.tags?.includes(bill.name) || t.partyTo === bill.name || t.notes?.includes(bill.name)) &&
+          t.transactionDate.startsWith(currentMonth))
+    );
 
     const txn: Transaction = {
-      id: this.generateUUID(),
+      id: existingTxnIndex >= 0 ? this.state.transactions[existingTxnIndex].id : txnId,
       workspaceId: this.state.accounts[0]?.workspaceId || 'ws-default',
       accountId: accountId,
       categoryId: bill.categoryId,
@@ -1782,8 +1837,93 @@ class OfflineStorageEngine {
       clientCreatedAt: now,
       updatedAt: now,
       version: 1,
+      isDeleted: false,
     };
-    this.state.transactions = [txn, ...this.state.transactions];
+
+    if (existingTxnIndex >= 0) {
+      this.state.transactions[existingTxnIndex] = txn;
+    } else {
+      this.state.transactions = [txn, ...this.state.transactions];
+    }
+
+    // 1. Antrekan perubahan tagihan ke syncQueue (Supabase)
+    this.state.syncQueue.push({
+      id: this.generateUUID(),
+      entityTable: 'bills',
+      entityId: billId,
+      operation: 'UPDATE',
+      payload: bill,
+      clientTimestamp: now,
+      status: 'pending',
+      retryCount: 0,
+    });
+
+    // 2. Antrekan transaksi pengurangan biaya tagihan ke syncQueue (Supabase)
+    this.state.syncQueue.push({
+      id: this.generateUUID(),
+      entityTable: 'transactions',
+      entityId: txn.id,
+      operation: 'INSERT',
+      payload: txn,
+      clientTimestamp: now,
+      status: 'pending',
+      retryCount: 0,
+    });
+
+    // 3. Pindahkan rekening yang digunakan ke paling atas sesuai aturan
+    const usedAcc = this.state.accounts.filter((a) => a.id === accountId);
+    const otherAccs = this.state.accounts.filter((a) => a.id !== accountId);
+    this.state.accounts = [...usedAcc, ...otherAccs];
+
+    // 4. Hitung ulang saldo rekening dan antrekan pembaruan saldo rekening ke syncQueue
+    this.recalculateAccountBalances();
+    const updatedAcc = this.state.accounts.find((a) => a.id === accountId);
+    if (updatedAcc) {
+      this.queueAccountUpsert(updatedAcc);
+    }
+
+    this.persist();
+    if (this.isOnline()) this.triggerSync();
+  }
+
+  public unpayBill(billId: string, monthStr?: string) {
+    const targetMonth = monthStr || new Date().toISOString().slice(0, 7);
+    const bill = this.state.bills.find((b) => b.id === billId);
+    if (!bill) return;
+
+    const now = new Date().toISOString();
+    bill.paidMonths = bill.paidMonths.filter((m) => m !== targetMonth);
+    bill.updatedAt = now;
+
+    // Hapus transaksi yang terkait dengan pembayaran tagihan bulan ini
+    const txnToDelete = this.state.transactions.find(
+      (t) =>
+        !t.isDeleted &&
+        t.type === 'expense' &&
+        t.tags?.includes('Tagihan Rutin') &&
+        (t.id === `txn-bill-${bill.id}-${targetMonth}` ||
+          t.tags?.includes(bill.name) ||
+          t.partyTo === bill.name ||
+          t.notes?.includes(bill.name)) &&
+        t.transactionDate.startsWith(targetMonth)
+    );
+
+    if (txnToDelete) {
+      txnToDelete.isDeleted = true;
+      txnToDelete.updatedAt = now;
+      this.state.transactions = this.state.transactions.filter((t) => t.id !== txnToDelete.id);
+
+      this.state.syncQueue.push({
+        id: this.generateUUID(),
+        entityTable: 'transactions',
+        entityId: txnToDelete.id,
+        operation: 'DELETE',
+        payload: { id: txnToDelete.id, isDeleted: true },
+        clientTimestamp: now,
+        status: 'pending',
+        retryCount: 0,
+      });
+    }
 
     this.state.syncQueue.push({
       id: this.generateUUID(),
@@ -1796,23 +1936,122 @@ class OfflineStorageEngine {
       retryCount: 0,
     });
 
+    this.recalculateAccountBalances();
+    const affectedAccId = txnToDelete?.accountId || bill.accountId;
+    if (affectedAccId) {
+      const affectedAcc = this.state.accounts.find((a) => a.id === affectedAccId);
+      if (affectedAcc) this.queueAccountUpsert(affectedAcc);
+    }
+
     this.persist();
     if (this.isOnline()) this.triggerSync();
   }
 
-  public unpayBill(billId: string, monthStr?: string) {
-    const targetMonth = monthStr || new Date().toISOString().slice(0, 7);
-    this.state.bills = this.state.bills.map((b) => {
-      if (b.id === billId) {
-        return {
-          ...b,
-          paidMonths: b.paidMonths.filter((m) => m !== targetMonth),
-          updatedAt: new Date().toISOString(),
-        };
+  /**
+   * Rekonsiliasi Otomatis Pembayaran Tagihan:
+   * Memastikan setiap tagihan rutin yang berstatus lunas (paidMonths) memiliki transaksi
+   * pengeluaran yang sesuai di tabel transactions dan memotong saldo rekening, baik di HP 1 maupun HP 2.
+   */
+  public reconcilePaidBillsTransactions(): boolean {
+    let changed = false;
+    const now = new Date().toISOString();
+
+    for (const bill of this.state.bills) {
+      if (bill.isDeleted) continue;
+      const paidMonths = bill.paidMonths || [];
+
+      for (const month of paidMonths) {
+        // Cari seluruh transaksi yang cocok dengan tagihan ini pada bulan terkait
+        const matchingTxns = this.state.transactions.filter(
+          (t) =>
+            !t.isDeleted &&
+            t.type === 'expense' &&
+            (t.id === `txn-bill-${bill.id}-${month}` ||
+              (t.tags?.includes('Tagihan Rutin') &&
+                (t.tags?.includes(bill.name) || t.partyTo === bill.name || t.notes?.includes(bill.name)) &&
+                t.transactionDate.startsWith(month)))
+        );
+
+        if (matchingTxns.length === 0) {
+          // Kasus HP 2: Tagihan lunas tapi transaksi belum ada di device ini
+          const targetAccountId = bill.accountId || this.state.accounts[0]?.id || '';
+          const txnId = `txn-bill-${bill.id}-${month}`;
+          const paymentDate =
+            bill.lastPaidDate && bill.lastPaidDate.startsWith(month)
+              ? bill.lastPaidDate
+              : `${month}-01T12:00:00.000Z`;
+
+          const missingTx: Transaction = {
+            id: txnId,
+            workspaceId: bill.workspaceId || this.state.accounts[0]?.workspaceId || 'ws-default',
+            accountId: targetAccountId,
+            categoryId: bill.categoryId,
+            userId: this.state.activeRole === 'husband' ? 'usr-husband-fikri-01' : 'usr-wife-alya-02',
+            amount: bill.amount,
+            type: 'expense',
+            tags: ['Tagihan Rutin', bill.name],
+            notes: `Pembayaran Tagihan Rutin: ${bill.name}`,
+            partyTo: bill.name,
+            transactionDate: paymentDate,
+            clientCreatedAt: paymentDate,
+            updatedAt: now,
+            version: 1,
+            isDeleted: false,
+          };
+
+          this.state.transactions = [missingTx, ...this.state.transactions].sort(
+            (a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime()
+          );
+
+          this.state.syncQueue.push({
+            id: this.generateUUID(),
+            entityTable: 'transactions',
+            entityId: missingTx.id,
+            operation: 'INSERT',
+            payload: missingTx,
+            clientTimestamp: now,
+            status: 'pending',
+            retryCount: 0,
+          });
+
+          const targetAcc = this.state.accounts.find((a) => a.id === targetAccountId);
+          if (targetAcc) {
+            this.queueAccountUpsert(targetAcc);
+          }
+
+          changed = true;
+        } else if (matchingTxns.length > 1) {
+          // Jika terjadi duplikasi akibat sinkronisasi simultan, simpan satu dan hapus duplikat
+          const primary =
+            matchingTxns.find((t) => t.id === `txn-bill-${bill.id}-${month}`) || matchingTxns[0];
+          const duplicates = matchingTxns.filter((t) => t.id !== primary.id);
+
+          for (const dup of duplicates) {
+            dup.isDeleted = true;
+            this.state.transactions = this.state.transactions.filter((t) => t.id !== dup.id);
+            this.state.syncQueue.push({
+              id: this.generateUUID(),
+              entityTable: 'transactions',
+              entityId: dup.id,
+              operation: 'DELETE',
+              payload: { id: dup.id, isDeleted: true },
+              clientTimestamp: now,
+              status: 'pending',
+              retryCount: 0,
+            });
+          }
+          changed = true;
+        }
       }
-      return b;
-    });
-    this.persist();
+    }
+
+    if (changed) {
+      this.recalculateAccountBalances();
+      this.persist();
+      this.notify();
+    }
+
+    return changed;
   }
 
   // --- DEBTS & LOANS MANAGEMENT ---
@@ -1978,6 +2217,23 @@ class OfflineStorageEngine {
         version: 1,
       };
       this.state.transactions = [txn, ...this.state.transactions];
+
+      this.state.syncQueue.push({
+        id: this.generateUUID(),
+        entityTable: 'transactions',
+        entityId: txn.id,
+        operation: 'INSERT',
+        payload: txn,
+        clientTimestamp: now,
+        status: 'pending',
+        retryCount: 0,
+      });
+
+      const acc = this.state.accounts.find((a) => a.id === payment.accountId);
+      if (acc) {
+        this.queueAccountUpsert(acc);
+      }
+      this.recalculateAccountBalances();
     }
 
     let updatedDebt: DebtItem | undefined;
@@ -2265,12 +2521,31 @@ class OfflineStorageEngine {
             txMap.set(rt.id, rt);
           }
         }
+        const remoteTxIds = new Set(remoteTxs.map((r: any) => r.id));
         for (const lt of this.state.transactions) {
           if (lt.isDeleted) continue;
           const pending = pendingMap.get(lt.id);
           if (pending && pending.operation === 'DELETE') continue;
           if (!txMap.has(lt.id) || pending) {
             txMap.set(lt.id, lt);
+          }
+          // Pastikan setiap transaksi lokal yang belum ada di server remote otomatis diantrekan ke syncQueue
+          if (!remoteTxIds.has(lt.id)) {
+            const isAlreadyQueued = this.state.syncQueue.some(
+              (q) => q.entityTable === 'transactions' && q.entityId === lt.id
+            );
+            if (!isAlreadyQueued) {
+              this.state.syncQueue.push({
+                id: this.generateUUID(),
+                entityTable: 'transactions',
+                entityId: lt.id,
+                operation: 'INSERT',
+                payload: lt,
+                clientTimestamp: lt.updatedAt || new Date().toISOString(),
+                status: 'pending',
+                retryCount: 0,
+              });
+            }
           }
         }
         this.state.transactions = Array.from(txMap.values()).sort(
@@ -2434,7 +2709,8 @@ class OfflineStorageEngine {
         this.state.debts = Array.from(dMap.values());
       }
 
-      // Selalu kalkulasi ulang saldo rekening agar sesuai dengan seluruh transaksi yang masuk
+      // Rekonsiliasi pembayaran tagihan & kalkulasi ulang saldo rekening agar sinkron di semua device
+      this.reconcilePaidBillsTransactions();
       this.recalculateAccountBalances();
       this.persist();
       return true;
@@ -2801,7 +3077,10 @@ class OfflineStorageEngine {
       } else {
         this.state.bills = [...this.state.bills, bill];
       }
+      this.reconcilePaidBillsTransactions();
+      this.recalculateAccountBalances();
       this.persist();
+      this.notify();
     }
   }
 
