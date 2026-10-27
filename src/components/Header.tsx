@@ -183,8 +183,7 @@ export const Header: React.FC<HeaderProps> = ({
             className="flex items-center gap-2 text-left group"
           >
             <div className="flex items-center gap-3">
-              <img src="/logo.png" alt="Catatin!" className="w-8 h-8 rounded-lg" />
-              <span className="font-bold text-lg text-gray-900 hidden sm:block">Catatin!</span>
+              <img src="/Logo 2.png" alt="Catatin!" className="h-8 w-auto object-contain" />
             </div>
           </button>
 

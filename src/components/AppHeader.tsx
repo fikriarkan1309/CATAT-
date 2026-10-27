@@ -30,9 +30,15 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
           title="Ke Beranda Catatin!"
         >
           <img
-            src="/Logo%202.png"
+            src="/Logo 2.png"
             alt="Catatin!"
             className="h-9 w-auto max-w-[170px] object-contain drop-shadow-xs"
+            onError={(e) => {
+              const target = e.currentTarget;
+              if (!target.src.includes('%20')) {
+                target.src = '/Logo%202.png';
+              }
+            }}
           />
         </button>
 

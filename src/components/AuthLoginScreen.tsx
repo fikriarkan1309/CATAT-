@@ -131,16 +131,16 @@ export const AuthLoginScreen: React.FC<AuthLoginScreenProps> = ({
       <div className="max-w-md w-full mx-auto flex items-center justify-between py-2">
         <div className="flex items-center gap-2.5">
           <img 
-            src="/logo.png" 
+            src="/Logo 2.png" 
             alt="Catatin!" 
-            className="w-9 h-9 rounded-2xl shadow-md object-cover" 
+            className="h-9 w-auto max-w-[170px] object-contain drop-shadow-xs" 
+            onError={(e) => {
+              const target = e.currentTarget;
+              if (!target.src.includes('%20')) {
+                target.src = '/Logo%202.png';
+              }
+            }}
           />
-          <div>
-            <span className="font-extrabold text-sm tracking-tight text-slate-900 dark:text-white block leading-none">
-              Catatin!
-            </span>
-            <span className="text-[10px] text-slate-400 font-medium">Buku Kas Keuangan Keluarga</span>
-          </div>
         </div>
 
         <button
@@ -160,18 +160,19 @@ export const AuthLoginScreen: React.FC<AuthLoginScreenProps> = ({
           {/* Header Card Title */}
           <div className="flex flex-col items-center justify-center text-center space-y-1">
             <img 
-              src="/logo.png" 
-              alt="Logo Catatin!" 
-              className="w-20 h-20 mb-3 rounded-2xl shadow-sm"
+              src="/Logo.png" 
+              alt="Catatin!" 
+              className="w-20 h-20 mb-3 rounded-2xl shadow-sm object-contain"
+              onError={(e) => {
+                const target = e.currentTarget;
+                if (!target.src.includes('Logo.png')) {
+                  target.src = '/Logo.png';
+                }
+              }}
             />
             <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight">
               {mode === 'login' ? 'Masuk ke Akun' : 'Daftar Akun Baru'}
             </h1>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              {mode === 'login'
-                ? 'Gunakan email dan kata sandi akun Anda untuk membuka buku kas'
-                : 'Daftarkan nama akun, email, dan kata sandi untuk memulai'}
-            </p>
           </div>
 
           {/* Feedback Alerts */}
