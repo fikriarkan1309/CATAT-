@@ -6,24 +6,30 @@
 import React, { useState } from 'react';
 import { useFinanceStore } from './hooks/useFinanceStore';
 import { useTheme } from './hooks/useTheme';
-import { Header, MainNavTab } from './components/Header';
-import { DynamicFAB } from './components/DynamicFAB';
+import { AppHeader } from './components/AppHeader';
+import { BottomNav, AppNavTab } from './components/BottomNav';
+import { QuickAddActionSheet } from './components/QuickAddActionSheet';
+import { DashboardView } from './components/DashboardView';
+import { LainnyaView } from './components/LainnyaView';
+import { PerbandinganView } from './components/PerbandinganView';
+import { AccountCards } from './components/AccountCards';
+import { SavingsGoalsSection } from './components/SavingsGoalsSection';
+import { BudgetRolloverSection } from './components/BudgetRolloverSection';
+import { RecurringBillsSection } from './components/RecurringBillsSection';
+import { DebtsLoansView } from './components/DebtsLoansView';
+import { RecentTransactions } from './components/RecentTransactions';
+import { MonthlyAnalysisView } from './components/MonthlyAnalysisView';
+import { CategoryManagementView } from './components/CategoryManagementView';
 import { SyncQueueModal } from './components/SyncQueueModal';
 import { ThemedTransactionModal } from './components/ThemedTransactionModal';
 import { AccountManageModal } from './components/AccountManageModal';
 import { BudgetManageModal } from './components/BudgetManageModal';
-import { CategoryManagementView } from './components/CategoryManagementView';
-import { HomeFiveKanbans } from './components/HomeFiveKanbans';
-import { AccountsSavingsView } from './components/AccountsSavingsView';
-import { BudgetBillsView } from './components/BudgetBillsView';
-import { DebtsLoansView } from './components/DebtsLoansView';
 import { SettingsMenuModal } from './components/SettingsMenuModal';
 import { DataBackupModal } from './components/DataBackupModal';
 import { UserAccountModal } from './components/UserAccountModal';
-import { RecentTransactions } from './components/RecentTransactions';
-import { MonthlyAnalysisView } from './components/MonthlyAnalysisView';
 import { AuthLoginScreen } from './components/AuthLoginScreen';
 import { Account, Budget, Transaction, TransactionType } from './types/finance';
+import { ArrowLeft } from 'lucide-react';
 
 export default function App() {
   const { theme, toggleTheme } = useTheme();
@@ -48,7 +54,6 @@ export default function App() {
     isSyncing,
     pendingSyncCount,
     toggleSimulatedOffline,
-    setActiveRole,
     addAccount,
     updateAccount,
     toggleArchiveAccount,
@@ -85,8 +90,11 @@ export default function App() {
     clearSyncedQueue,
   } = useFinanceStore();
 
-  // Navigation tab
-  const [currentTab, setCurrentTab] = useState<MainNavTab>('home');
+  // Navigation tab (default: home)
+  const [currentTab, setCurrentTab] = useState<AppNavTab>('home');
+
+  // Quick Add Sheet State (from center + button)
+  const [isQuickAddSheetOpen, setIsQuickAddSheetOpen] = useState(false);
 
   // Menu & Settings Modals
   const [isSettingsMenuOpen, setIsSettingsMenuOpen] = useState(false);
@@ -97,7 +105,6 @@ export default function App() {
   const [isTxnModalOpen, setIsTxnModalOpen] = useState(false);
   const [txnModalType, setTxnModalType] = useState<TransactionType>('expense');
   const [selectedAccountIdForTxn, setSelectedAccountIdForTxn] = useState<string | undefined>(undefined);
-
 
   // Edit Transaction Modal State
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
@@ -210,42 +217,63 @@ export default function App() {
     );
   }
 
+  // Determine if on a sub-view originating from 'Lainnya'
+  const isSubViewFromMore = [
+    'comparison',
+    'savings',
+    'budgets',
+    'bills',
+    'debts',
+    'transactions',
+    'categories',
+  ].includes(currentTab);
+
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col font-sans text-slate-900 dark:text-slate-100 pb-20 overflow-x-hidden transition-colors">
-      {/* Top Header Navigation (Dengan Home s/d Kategori di Head, Gerigi, Dark Mode) */}
-      <Header
-        currentTab={currentTab}
-        onSelectTab={setCurrentTab}
+    <div className="min-h-screen bg-white dark:bg-slate-950 flex flex-col font-sans text-slate-900 dark:text-slate-100 overflow-x-hidden transition-colors">
+      {/* Top Header Navigation (Logo 2.png + Settings Gear) */}
+      <AppHeader
+        onLogoClick={() => setCurrentTab('home')}
+        onOpenSettings={() => setIsSettingsMenuOpen(true)}
         isOnline={isOnline}
         isSyncing={isSyncing}
         pendingSyncCount={pendingSyncCount}
-        onToggleOffline={toggleSimulatedOffline}
         onOpenSyncQueue={() => setIsSyncModalOpen(true)}
-        theme={theme}
-        onToggleTheme={toggleTheme}
-        onOpenSettings={() => setIsSettingsMenuOpen(true)}
       />
 
       {/* Offline Alert Banner (Jika Offline) */}
       {!isOnline && (
         <div className="bg-amber-500 text-amber-950 px-4 py-1.5 text-xs font-semibold text-center border-b border-amber-600 flex items-center justify-center gap-2">
-          <span>Mode Offline — Semua data tetap tersimpan instan di IndexedDB lokal.</span>
+          <span>Mode Offline — Data tersimpan aman di IndexedDB lokal.</span>
           <button
             onClick={toggleSimulatedOffline}
             className="underline hover:text-white transition-colors"
           >
-            Aktifkan Online
+            Kembali Online
           </button>
         </div>
       )}
 
       {/* Main Content Area */}
-      <main className="max-w-[1600px] mx-auto px-3 sm:px-6 py-3 flex-1 w-full flex flex-col">
+      <main className="w-full flex-1 flex flex-col bg-white dark:bg-slate-950">
+        {/* Sub-view Header with Back to Lainnya button */}
+        {isSubViewFromMore && (
+          <div className="max-w-lg mx-auto sm:max-w-xl md:max-w-2xl w-full px-4 pt-3 flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => setCurrentTab('more')}
+              className="flex items-center gap-1.5 text-xs font-bold text-sky-600 dark:text-sky-400 hover:text-sky-700 bg-sky-50 dark:bg-slate-900 px-3 py-1.5 rounded-xl border border-sky-100 dark:border-slate-800 transition-colors shadow-2xs"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Kembali ke Lainnya</span>
+            </button>
+          </div>
+        )}
+
         {/* ========================================================================= */}
-        {/* TAB 1: HOME VIEW — 5 KANBAN UTAMA TERLIHAT SEMUA TANPA PERLU SCROLL */}
+        {/* TAB 1: BERANDA / DASHBOARD (Mockup Dashboard 1 & 2) */}
         {/* ========================================================================= */}
         {currentTab === 'home' && (
-          <HomeFiveKanbans
+          <DashboardView
             accounts={accounts}
             categories={categories}
             transactions={transactions}
@@ -254,27 +282,18 @@ export default function App() {
             bills={bills}
             debts={debts}
             onNavigateTab={setCurrentTab}
-            onAddIncome={(accId) => handleOpenIncome(accId)}
-            onAddExpense={(accId) => handleOpenExpense(accId)}
-            onTransfer={(accId) => handleOpenTransfer(accId)}
-            onEditAccount={handleStartEditAccount}
-            onToggleArchiveAccount={toggleArchiveAccount}
-            onDeleteAccount={deleteAccount}
+            onAddIncome={handleOpenIncome}
+            onAddExpense={handleOpenExpense}
+            onTransfer={handleOpenTransfer}
             onAddNewAccount={handleStartAddAccount}
-            onAddNewBudget={handleStartAddBudget}
-            onEditBudget={handleStartEditBudget}
-            onDeleteBudget={deleteBudget}
-            onProcessRollover={(b) => processBudgetRollover(b.id, 'rollover')}
-            onDeleteTransaction={deleteTransaction}
-            onEditTransaction={handleStartEditTransaction}
           />
         )}
 
         {/* ========================================================================= */}
-        {/* TAB 2: RINGKASAN & ANALISIS LENGKAP */}
+        {/* TAB 2: RINGKASAN & ANALISIS BULANAN */}
         {/* ========================================================================= */}
-        {currentTab === 'analysis' && (
-          <div className="animate-in fade-in">
+        {currentTab === 'summary' && (
+          <div className="max-w-lg mx-auto sm:max-w-xl md:max-w-2xl w-full px-3 py-2 pb-24 animate-in fade-in">
             <MonthlyAnalysisView
               transactions={transactions}
               categories={categories}
@@ -284,71 +303,119 @@ export default function App() {
         )}
 
         {/* ========================================================================= */}
-        {/* TAB 3: REKENING & TARGET TABUNGAN (SUB TAB) */}
+        {/* TAB 3: REKENING (Standalone View) */}
         {/* ========================================================================= */}
         {currentTab === 'accounts' && (
-          <AccountsSavingsView
-            accounts={accounts}
+          <div className="max-w-lg mx-auto sm:max-w-xl md:max-w-2xl w-full px-3 py-2 pb-24 animate-in fade-in space-y-4">
+            <AccountCards
+              accounts={accounts}
+              transactions={transactions}
+              categories={categories}
+              onAddIncome={handleOpenIncome}
+              onAddExpense={handleOpenExpense}
+              onTransfer={handleOpenTransfer}
+              onEditAccount={handleStartEditAccount}
+              onToggleArchive={toggleArchiveAccount}
+              onDeleteAccount={deleteAccount}
+              onAddNewAccount={handleStartAddAccount}
+            />
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* TAB 4: LAINNYA (Grid 6 Menu Mockup Lainnya_516d7998.jpg) */}
+        {/* ========================================================================= */}
+        {currentTab === 'more' && (
+          <LainnyaView onSelectMenu={setCurrentTab} />
+        )}
+
+        {/* ========================================================================= */}
+        {/* SUB MENU 1 DARI LAINNYA: PERBANDINGAN */}
+        {/* ========================================================================= */}
+        {currentTab === 'comparison' && (
+          <PerbandinganView
             transactions={transactions}
             categories={categories}
-            goals={goals}
-            onAddIncome={(accId) => handleOpenIncome(accId)}
-            onAddExpense={(accId) => handleOpenExpense(accId)}
-            onTransfer={(accId) => handleOpenTransfer(accId)}
-            onEditAccount={handleStartEditAccount}
-            onToggleArchive={toggleArchiveAccount}
-            onDeleteAccount={deleteAccount}
-            onAddNewAccount={handleStartAddAccount}
-            onAddGoal={addGoal}
-            onUpdateGoal={updateGoal}
-            onDeleteGoal={deleteGoal}
-            onDepositToGoal={depositToGoal}
-            onWithdrawFromGoal={withdrawFromGoal}
+            accounts={accounts}
+            onBack={() => setCurrentTab('more')}
           />
         )}
 
         {/* ========================================================================= */}
-        {/* TAB 4: ANGGARAN & TAGIHAN RUTIN (SUB TAB) */}
+        {/* SUB MENU 2 DARI LAINNYA: TARGET TABUNGAN (Standalone) */}
+        {/* ========================================================================= */}
+        {currentTab === 'savings' && (
+          <div className="max-w-lg mx-auto sm:max-w-xl md:max-w-2xl w-full px-3 py-2 pb-24 animate-in fade-in space-y-4">
+            <SavingsGoalsSection
+              goals={goals}
+              accounts={accounts}
+              onAddGoal={addGoal}
+              onUpdateGoal={updateGoal}
+              onDeleteGoal={deleteGoal}
+              onDepositToGoal={depositToGoal}
+              onWithdrawFromGoal={withdrawFromGoal}
+            />
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* SUB MENU 3 DARI LAINNYA: ALOKASI ANGGARAN (Standalone) */}
         {/* ========================================================================= */}
         {currentTab === 'budgets' && (
-          <BudgetBillsView
-            budgets={budgets}
-            categories={categories}
-            transactions={transactions}
-            goals={goals}
-            accounts={accounts}
-            bills={bills}
-            onProcessRollover={processBudgetRollover}
-            onAddNewBudget={handleStartAddBudget}
-            onEditBudget={handleStartEditBudget}
-            onDeleteBudget={deleteBudget}
-            onAddBill={addBill}
-            onUpdateBill={updateBill}
-            onDeleteBill={deleteBill}
-            onPayBill={payBill}
-            onUnpayBill={unpayBill}
-          />
+          <div className="max-w-lg mx-auto sm:max-w-xl md:max-w-2xl w-full px-3 py-2 pb-24 animate-in fade-in space-y-4">
+            <BudgetRolloverSection
+              budgets={budgets}
+              categories={categories}
+              transactions={transactions}
+              goals={goals}
+              accounts={accounts}
+              onProcessRollover={processBudgetRollover}
+              onAddNewBudget={handleStartAddBudget}
+              onEditBudget={handleStartEditBudget}
+              onDeleteBudget={deleteBudget}
+            />
+          </div>
         )}
 
         {/* ========================================================================= */}
-        {/* TAB 5: HUTANG & PIUTANG (DI ANTARA ANGGARAN & TRANSAKSI) */}
+        {/* SUB MENU 4 DARI LAINNYA: TAGIHAN RUTIN (Standalone) */}
+        {/* ========================================================================= */}
+        {currentTab === 'bills' && (
+          <div className="max-w-lg mx-auto sm:max-w-xl md:max-w-2xl w-full px-3 py-2 pb-24 animate-in fade-in space-y-4">
+            <RecurringBillsSection
+              bills={bills}
+              accounts={accounts}
+              categories={categories}
+              onAddBill={addBill}
+              onUpdateBill={updateBill}
+              onDeleteBill={deleteBill}
+              onPayBill={payBill}
+              onUnpayBill={unpayBill}
+            />
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* SUB MENU 5 DARI LAINNYA: HUTANG & PIUTANG (Standalone, tetap bersama) */}
         {/* ========================================================================= */}
         {currentTab === 'debts' && (
-          <DebtsLoansView
-            debts={debts}
-            accounts={accounts}
-            onAddDebt={addDebt}
-            onUpdateDebt={updateDebt}
-            onDeleteDebt={deleteDebt}
-            onRecordPayment={recordDebtPayment}
-          />
+          <div className="max-w-lg mx-auto sm:max-w-xl md:max-w-2xl w-full px-3 py-2 pb-24 animate-in fade-in">
+            <DebtsLoansView
+              debts={debts}
+              accounts={accounts}
+              onAddDebt={addDebt}
+              onUpdateDebt={updateDebt}
+              onDeleteDebt={deleteDebt}
+              onRecordPayment={recordDebtPayment}
+            />
+          </div>
         )}
 
         {/* ========================================================================= */}
-        {/* TAB 6: TRANSAKSI LENGKAP */}
+        {/* SUB MENU 6 DARI LAINNYA: TRANSAKSI (Standalone) */}
         {/* ========================================================================= */}
         {currentTab === 'transactions' && (
-          <div className="space-y-4 animate-in fade-in">
+          <div className="max-w-lg mx-auto sm:max-w-xl md:max-w-2xl w-full px-3 py-2 pb-24 animate-in fade-in space-y-4">
             <RecentTransactions
               transactions={transactions}
               accounts={accounts}
@@ -361,10 +428,10 @@ export default function App() {
         )}
 
         {/* ========================================================================= */}
-        {/* TAB 7: KELOLA KATEGORI LANGSUNG (DARI MENU GERIGI) */}
+        {/* KELOLA KATEGORI (Dari menu gerigi atau referensi transaksi) */}
         {/* ========================================================================= */}
         {currentTab === 'categories' && (
-          <div className="space-y-4 animate-in fade-in">
+          <div className="max-w-lg mx-auto sm:max-w-xl md:max-w-2xl w-full px-3 py-2 pb-24 animate-in fade-in space-y-4">
             <CategoryManagementView
               categories={categories}
               onAddCategory={addCategory}
@@ -377,22 +444,29 @@ export default function App() {
         )}
       </main>
 
-      {/* Context-Aware Floating Action Button (FAB) */}
-      <DynamicFAB
+      {/* ========================================================================= */}
+      {/* BOTTOM NAVIGATION BAR DENGAN 4 TAB + TOMBOL (+) MELAYANG DI TENGAH */}
+      {/* ========================================================================= */}
+      <BottomNav
         currentTab={currentTab}
-        onAddAccount={handleStartAddAccount}
-        onAddBudget={handleStartAddBudget}
-        onOpenIncome={() => handleOpenIncome()}
-        onOpenExpense={() => handleOpenExpense()}
-        onOpenTransfer={() => handleOpenTransfer()}
-        onAddCategory={() => setExternalOpenCategoryAdd(true)}
+        onSelectTab={setCurrentTab}
+        onOpenQuickAdd={() => setIsQuickAddSheetOpen(true)}
+      />
+
+      {/* Quick Add Action Sheet (Muncul saat tombol (+) di tengah ditekan) */}
+      <QuickAddActionSheet
+        isOpen={isQuickAddSheetOpen}
+        onClose={() => setIsQuickAddSheetOpen(false)}
+        onSelectExpense={() => handleOpenExpense()}
+        onSelectIncome={() => handleOpenIncome()}
+        onSelectTransfer={() => handleOpenTransfer()}
       />
 
       {/* ========================================================================= */}
       {/* MODALS */}
       {/* ========================================================================= */}
 
-      {/* Themed Transaction Form Modal (Dua Kanban: Merah / Hijau / Biru) */}
+      {/* Themed Transaction Form Modal (Merah / Hijau / Biru) */}
       <ThemedTransactionModal
         isOpen={isTxnModalOpen}
         onClose={() => setIsTxnModalOpen(false)}
@@ -428,8 +502,6 @@ export default function App() {
         onSave={handleSaveBudget}
       />
 
-
-
       {/* Edit Transaction Modal */}
       {editingTransaction && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 dark:bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4">
@@ -450,7 +522,7 @@ export default function App() {
                   onChange={(e) => setEditAmountStr(e.target.value)}
                   required
                   autoFocus
-                  className="w-full mt-1 p-2.5 text-lg font-bold font-mono rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-slate-900"
+                  className="w-full mt-1 p-2.5 text-lg font-bold font-mono rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-sky-500"
                 />
               </div>
 
@@ -489,7 +561,7 @@ export default function App() {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 dark:bg-indigo-600 dark:hover:bg-indigo-500 rounded-lg shadow-xs"
+                  className="flex-1 py-2 text-xs font-bold text-white bg-sky-500 hover:bg-sky-600 rounded-lg shadow-xs"
                 >
                   Simpan Perubahan
                 </button>
@@ -511,7 +583,7 @@ export default function App() {
         onLogout={logout}
       />
 
-      {/* Data & Backup Modal (Poin Nomor 3) */}
+      {/* Data & Backup Modal */}
       <DataBackupModal
         isOpen={isDataModalOpen}
         onClose={() => setIsDataModalOpen(false)}
@@ -523,7 +595,7 @@ export default function App() {
         accountsCount={accounts.length}
       />
 
-      {/* User Account & Multi-Device Modal (Poin Nomor 2, Akun Paling Bawah) */}
+      {/* User Account & Multi-Device Modal */}
       <UserAccountModal
         isOpen={isUserAccountModalOpen}
         onClose={() => setIsUserAccountModalOpen(false)}
