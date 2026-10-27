@@ -94,6 +94,7 @@ class OfflineStorageEngine {
       await this.triggerSync();
       await this.pullFromSupabase(supabase, userId);
       this.setupRealtimeSubscription(userId);
+      this.notify();
     }
   }
 
@@ -150,8 +151,9 @@ class OfflineStorageEngine {
               bills: Array.isArray(parsed.bills) ? parsed.bills : INITIAL_BILLS,
               debts: Array.isArray(parsed.debts) ? parsed.debts : INITIAL_DEBTS,
             };
-            this.recalculateAccountBalances();
+            this.sanitizeTransferTransactions();
             this.reconcilePaidBillsTransactions();
+            this.recalculateAccountBalances();
           } catch {
             // fallback
           }
@@ -2054,6 +2056,74 @@ class OfflineStorageEngine {
     return changed;
   }
 
+  /**
+   * Pembersihan & Pemulihan Transaksi Transfer:
+   * Memastikan setiap transaksi transfer memiliki categoryId yang valid (bukan string 'transfer' mentah)
+   * agar sinkronisasi ke Supabase tidak ditolak oleh validasi UUID / foreign key.
+   * Juga meng-antrekan ulang item transfer di syncQueue yang sempat gagal sinkron.
+   */
+  public sanitizeTransferTransactions(): boolean {
+    let changed = false;
+    // Pastikan kategori cat-transfer tersedia
+    const hasTransferCat = this.state.categories.some((c) => c.id === 'cat-transfer');
+    if (!hasTransferCat) {
+      this.state.categories = [
+        ...this.state.categories,
+        {
+          id: 'cat-transfer',
+          workspaceId: this.state.accounts[0]?.workspaceId || 'ws-default',
+          parentId: null,
+          name: 'Transfer Antar Rekening',
+          icon: 'ArrowLeftRight',
+          color: '#0EA5E9',
+          type: 'expense',
+          isSystem: true,
+          isDeleted: false,
+        },
+      ];
+      changed = true;
+    }
+
+    const defaultCatId =
+      this.state.categories.find(
+        (c) => c.id === 'cat-transfer' || c.name.toLowerCase().includes('transfer')
+      )?.id ||
+      this.state.categories[0]?.id ||
+      'cat-transfer';
+
+    // Perbaiki categoryId di seluruh transaksi transfer lokal
+    this.state.transactions = this.state.transactions.map((t) => {
+      if (t.type === 'transfer' && (!t.categoryId || t.categoryId === 'transfer')) {
+        changed = true;
+        return { ...t, categoryId: defaultCatId };
+      }
+      return t;
+    });
+
+    // Perbaiki & re-arm item di syncQueue yang sempat macet/gagal karena categoryId === 'transfer'
+    this.state.syncQueue = this.state.syncQueue.map((item) => {
+      if (item.entityTable === 'transactions' && item.payload) {
+        const tx = item.payload as Transaction;
+        if (tx.type === 'transfer' && (!tx.categoryId || tx.categoryId === 'transfer')) {
+          changed = true;
+          return {
+            ...item,
+            payload: { ...tx, categoryId: defaultCatId },
+            status: 'pending', // Re-arm agar dicoba sinkron kembali ke Supabase!
+            retryCount: 0,
+          };
+        }
+      }
+      return item;
+    });
+
+    if (changed) {
+      this.persist();
+      this.notify();
+    }
+    return changed;
+  }
+
   // --- DEBTS & LOANS MANAGEMENT ---
   // --- DEBTS & LOANS MANAGEMENT ---
   public addDebt(input: {
@@ -2710,9 +2780,11 @@ class OfflineStorageEngine {
       }
 
       // Rekonsiliasi pembayaran tagihan & kalkulasi ulang saldo rekening agar sinkron di semua device
+      this.sanitizeTransferTransactions();
       this.reconcilePaidBillsTransactions();
       this.recalculateAccountBalances();
       this.persist();
+      this.notify();
       return true;
     } catch (e) {
       console.warn('Failed to pull data from Supabase:', e);
@@ -2788,6 +2860,7 @@ class OfflineStorageEngine {
         this.state.transactions = this.state.transactions.filter((t) => t.id !== id);
         this.recalculateAccountBalances();
         this.persist();
+        this.notify();
       }
     } else if (eventType === 'INSERT' || eventType === 'UPDATE') {
       if (!newRecord) return;
@@ -2795,6 +2868,7 @@ class OfflineStorageEngine {
         this.state.transactions = this.state.transactions.filter((t) => t.id !== newRecord.id);
         this.recalculateAccountBalances();
         this.persist();
+        this.notify();
         return;
       }
 
@@ -2849,6 +2923,7 @@ class OfflineStorageEngine {
 
       this.recalculateAccountBalances();
       this.persist();
+      this.notify();
     }
   }
 
@@ -2860,6 +2935,7 @@ class OfflineStorageEngine {
         this.state.accounts = this.state.accounts.filter((a) => a.id !== id);
         this.recalculateAccountBalances();
         this.persist();
+        this.notify();
       }
     } else if (eventType === 'INSERT' || eventType === 'UPDATE') {
       if (!newRecord || newRecord.is_deleted) {
@@ -2867,6 +2943,7 @@ class OfflineStorageEngine {
           this.state.accounts = this.state.accounts.filter((a) => a.id !== newRecord.id);
           this.recalculateAccountBalances();
           this.persist();
+          this.notify();
         }
         return;
       }
@@ -2900,6 +2977,7 @@ class OfflineStorageEngine {
 
       this.recalculateAccountBalances();
       this.persist();
+      this.notify();
     }
   }
 
@@ -2910,12 +2988,14 @@ class OfflineStorageEngine {
       if (id) {
         this.state.categories = this.state.categories.filter((c) => c.id !== id);
         this.persist();
+        this.notify();
       }
     } else if (eventType === 'INSERT' || eventType === 'UPDATE') {
       if (!newRecord || newRecord.is_deleted) {
         if (newRecord?.id) {
           this.state.categories = this.state.categories.filter((c) => c.id !== newRecord.id);
           this.persist();
+          this.notify();
         }
         return;
       }
@@ -2944,6 +3024,7 @@ class OfflineStorageEngine {
         this.state.categories = [...this.state.categories, cat];
       }
       this.persist();
+      this.notify();
     }
   }
 
@@ -2954,12 +3035,14 @@ class OfflineStorageEngine {
       if (id) {
         this.state.budgets = this.state.budgets.filter((b) => b.id !== id);
         this.persist();
+        this.notify();
       }
     } else if (eventType === 'INSERT' || eventType === 'UPDATE') {
       if (!newRecord || newRecord.is_deleted) {
         if (newRecord?.id) {
           this.state.budgets = this.state.budgets.filter((b) => b.id !== newRecord.id);
           this.persist();
+          this.notify();
         }
         return;
       }
@@ -2991,6 +3074,7 @@ class OfflineStorageEngine {
         this.state.budgets = [...this.state.budgets, b];
       }
       this.persist();
+      this.notify();
     }
   }
 
@@ -3001,6 +3085,7 @@ class OfflineStorageEngine {
       if (id) {
         this.state.goals = this.state.goals.filter((g) => g.id !== id);
         this.persist();
+        this.notify();
       }
     } else if (eventType === 'INSERT' || eventType === 'UPDATE') {
       if (!newRecord) return;
@@ -3030,6 +3115,7 @@ class OfflineStorageEngine {
         this.state.goals = [...this.state.goals, g];
       }
       this.persist();
+      this.notify();
     }
   }
 
@@ -3091,12 +3177,14 @@ class OfflineStorageEngine {
       if (id) {
         this.state.debts = this.state.debts.filter((d) => d.id !== id);
         this.persist();
+        this.notify();
       }
     } else if (eventType === 'INSERT' || eventType === 'UPDATE') {
       if (!newRecord || newRecord.is_deleted) {
         if (newRecord?.id) {
           this.state.debts = this.state.debts.filter((d) => d.id !== newRecord.id);
           this.persist();
+          this.notify();
         }
         return;
       }
@@ -3130,6 +3218,7 @@ class OfflineStorageEngine {
         this.state.debts = [...this.state.debts, debt];
       }
       this.persist();
+      this.notify();
     }
   }
 
@@ -3185,12 +3274,22 @@ class OfflineStorageEngine {
           if (item.entityTable === 'transactions') {
             if (item.operation === 'INSERT' || item.operation === 'UPDATE') {
               const tx = item.payload;
+              // Pastikan category_id valid dan tidak menyebabkan kegagalan foreign key / UUID di Supabase
+              let validCatId = tx.categoryId;
+              if (tx.type === 'transfer' || !validCatId || validCatId === 'transfer') {
+                validCatId =
+                  this.state.categories.find(
+                    (c) => c.id === validCatId || c.id === 'cat-transfer' || c.name.toLowerCase().includes('transfer')
+                  )?.id ||
+                  this.state.categories[0]?.id ||
+                  'cat-transfer';
+              }
               const res = await supabase.from('transactions').upsert({
                 id: tx.id,
                 user_id: userId,
                 workspace_id: tx.workspaceId || 'ws-default',
                 account_id: tx.accountId,
-                category_id: tx.categoryId,
+                category_id: validCatId,
                 amount: tx.amount,
                 type: tx.type,
                 target_account_id: tx.targetAccountId || null,

@@ -188,9 +188,22 @@ export const ThemedTransactionModal: React.FC<ThemedTransactionModalProps> = ({
       }
     }
 
+    if (type === 'transfer' && (!targetAccountId || targetAccountId === accountId)) {
+      alert('Pilih rekening tujuan yang berbeda dari rekening sumber.');
+      return;
+    }
+
+    const transferCat = categories.find(
+      (c) => c.id === 'cat-transfer' || c.name.toLowerCase().includes('transfer')
+    );
+    const resolvedCategoryId =
+      type === 'transfer'
+        ? (transferCat?.id || categories[0]?.id || 'cat-transfer')
+        : (selectedCategoryId || selectedParentId || categories[0]?.id || '');
+
     onSave({
       accountId,
-      categoryId: type === 'transfer' ? 'transfer' : (selectedCategoryId || selectedParentId || categories[0]?.id || ''),
+      categoryId: resolvedCategoryId,
       userId: activeRole === 'husband' ? 'usr-husband-fikri-01' : 'usr-wife-alya-02',
       amount: numericAmount,
       type,
@@ -303,7 +316,14 @@ export const ThemedTransactionModal: React.FC<ThemedTransactionModalProps> = ({
                 </label>
                 <select
                   value={accountId}
-                  onChange={(e) => setAccountId(e.target.value)}
+                  onChange={(e) => {
+                    const newSource = e.target.value;
+                    setAccountId(newSource);
+                    if (targetAccountId === newSource) {
+                      const other = accounts.find((a) => a.id !== newSource);
+                      if (other) setTargetAccountId(other.id);
+                    }
+                  }}
                   className="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
                 >
                   {accounts.map((acc) => (
