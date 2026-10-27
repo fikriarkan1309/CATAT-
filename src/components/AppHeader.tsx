@@ -20,7 +20,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   onLogoClick,
 }) => {
   return (
-    <header className="sticky top-0 z-30 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-sky-100/60 dark:border-slate-800 transition-colors">
+    <header className="sticky top-0 z-40 bg-white dark:bg-slate-950 transition-colors">
       <div className="max-w-lg mx-auto sm:max-w-xl md:max-w-2xl px-4 py-2.5 flex items-center justify-between">
         {/* Logo Catatin! dari /public/Logo 2.png */}
         <button

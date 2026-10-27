@@ -229,7 +229,7 @@ export default function App() {
   ].includes(currentTab);
 
   return (
-    <div className="min-h-screen bg-white dark:bg-slate-950 flex flex-col font-sans text-slate-900 dark:text-slate-100 overflow-x-hidden transition-colors">
+    <div className="min-h-screen bg-white dark:bg-slate-950 flex flex-col font-sans text-slate-900 dark:text-slate-100 overflow-x-clip transition-colors">
       {/* Top Header Navigation (Logo 2.png + Settings Gear) */}
       <AppHeader
         onLogoClick={() => setCurrentTab('home')}
