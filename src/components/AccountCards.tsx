@@ -111,10 +111,13 @@ export const AccountCards: React.FC<AccountCardsProps> = ({
     : [];
 
   return (
-    <div className="w-full flex flex-col">
-      {/* 1. TOP BLUE GRADIENT HERO HEADER (Mockup Rekening_Baru_73f29a70.jpg) */}
-      <div className="w-full bg-gradient-to-b from-[#0052b4] via-[#0170d5] to-[#2cbdf8] text-white pt-2 sm:pt-3 pb-8 px-4 select-none">
-        <div className="max-w-lg mx-auto sm:max-w-xl md:max-w-2xl w-full">
+    <div className="w-full flex-1 min-h-0 flex flex-col overflow-hidden bg-white dark:bg-slate-950">
+      {/* 1. TOP BLUE GRADIENT HERO HEADER (FREEZE / TIDAK BERGERAK - Mockup Rekening Baru.jpg) */}
+      <div
+        className="w-full shrink-0 text-white pt-2 sm:pt-3 pb-11 px-4 select-none relative z-10"
+        style={{ background: 'linear-gradient(180deg, #0052b4 0%, #0170d5 50%, #2cbdf8 100%)' }}
+      >
+        <div className="max-w-2xl mx-auto w-full">
           {/* Header Bar: Logo 3.png (Left) & Settings Gear (Right) */}
           <div className="flex items-center justify-between py-1 mb-2">
             <button
@@ -148,7 +151,7 @@ export const AccountCards: React.FC<AccountCardsProps> = ({
           </div>
 
           {/* Centered Total Aset + Nominal + '+ Rekening' button */}
-          <div className="flex flex-col items-center justify-center text-center pt-1 pb-3">
+          <div className="flex flex-col items-center justify-center text-center pt-1 pb-2">
             <span className="text-xs sm:text-sm font-semibold text-sky-100 tracking-wide">
               Total Aset
             </span>
@@ -158,7 +161,7 @@ export const AccountCards: React.FC<AccountCardsProps> = ({
             <button
               type="button"
               onClick={onAddNewAccount}
-              className="mt-2 bg-white text-sky-600 hover:bg-sky-50 font-bold px-4 py-1.5 rounded-full shadow-md text-xs sm:text-sm inline-flex items-center gap-1 active:scale-95 transition-all cursor-pointer"
+              className="mt-1.5 bg-white text-sky-600 hover:bg-sky-50 font-bold px-4 py-1.5 rounded-full shadow-md text-xs sm:text-sm inline-flex items-center gap-1 active:scale-95 transition-all cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5 stroke-[3]" />
               <span>Rekening</span>
@@ -167,9 +170,9 @@ export const AccountCards: React.FC<AccountCardsProps> = ({
         </div>
       </div>
 
-      {/* 2. DAFTAR REKENING VERTIKAL (Curved White Card Container) */}
-      <div className="max-w-lg mx-auto sm:max-w-xl md:max-w-2xl w-full px-3 sm:px-4 -mt-4 pb-24">
-        <div className="bg-white dark:bg-slate-900 rounded-[28px] sm:rounded-[32px] border border-slate-200/80 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 p-2 sm:p-3">
+      {/* 2. DAFTAR REKENING VERTIKAL (SELEBAR LAYAR, LENGKUNGAN PERSIS REFERENSI DENGAN SHADOW KE ATAS) */}
+      <div className="flex-1 min-h-0 w-full bg-white dark:bg-slate-900 rounded-t-[32px] sm:rounded-t-[36px] -mt-[32px] sm:-mt-[36px] shadow-[0_-8px_20px_rgba(0,0,0,0.12)] dark:shadow-[0_-8px_20px_rgba(0,0,0,0.35)] overflow-y-auto no-scrollbar pb-28 relative z-20">
+        <div className="w-full max-w-2xl mx-auto px-4 sm:px-6 py-2 divide-y divide-slate-100 dark:divide-slate-800">
           {activeAccounts.length === 0 ? (
             <div className="p-8 text-center">
               <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mb-3">
@@ -331,67 +334,67 @@ export const AccountCards: React.FC<AccountCardsProps> = ({
               </div>
             ))
           )}
-        </div>
-      </div>
 
-      {/* 4. REKENING DIARSIPKAN */}
-      {archivedAccounts.length > 0 && (
-        <div className="pt-2">
-          <button
-            type="button"
-            onClick={() => setShowArchived(!showArchived)}
-            className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition-colors px-1"
-          >
-            <Archive className="w-3.5 h-3.5 text-amber-500" />
-            <span>Rekening Diarsipkan ({archivedAccounts.length})</span>
-            <ChevronDown
-              className={`w-3.5 h-3.5 transition-transform duration-200 ${
-                showArchived ? 'rotate-180' : ''
-              }`}
-            />
-          </button>
+          {/* 4. REKENING DIARSIPKAN */}
+          {archivedAccounts.length > 0 && (
+            <div className="pt-3 pb-6">
+              <button
+                type="button"
+                onClick={() => setShowArchived(!showArchived)}
+                className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition-colors px-1"
+              >
+                <Archive className="w-3.5 h-3.5 text-amber-500" />
+                <span>Rekening Diarsipkan ({archivedAccounts.length})</span>
+                <ChevronDown
+                  className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                    showArchived ? 'rotate-180' : ''
+                  }`}
+                />
+              </button>
 
-          {showArchived && (
-            <div className="mt-2 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
-              {archivedAccounts.map((acc) => (
-                <div
-                  key={acc.id}
-                  className="p-3 sm:p-4 flex items-center justify-between opacity-75 hover:opacity-100 transition-opacity"
-                >
-                  <div className="flex items-center gap-3 min-w-0 flex-1">
+              {showArchived && (
+                <div className="mt-2 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
+                  {archivedAccounts.map((acc) => (
                     <div
-                      className="w-9 h-9 rounded-xl flex items-center justify-center text-white shrink-0 opacity-80"
-                      style={{ backgroundColor: acc.color }}
+                      key={acc.id}
+                      className="p-3 sm:p-4 flex items-center justify-between opacity-75 hover:opacity-100 transition-opacity"
                     >
-                      {getAccountIcon(acc.type)}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm font-bold text-slate-700 dark:text-slate-300 truncate">
-                        {acc.name}
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <div
+                          className="w-9 h-9 rounded-xl flex items-center justify-center text-white shrink-0 opacity-80"
+                          style={{ backgroundColor: acc.color }}
+                        >
+                          {getAccountIcon(acc.type)}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm font-bold text-slate-700 dark:text-slate-300 truncate">
+                            {acc.name}
+                          </div>
+                          <div className="text-xs text-slate-400">
+                            {getAccountTypeLabel(acc.type)} · Diarsipkan
+                          </div>
+                        </div>
                       </div>
-                      <div className="text-xs text-slate-400">
-                        {getAccountTypeLabel(acc.type)} · Diarsipkan
-                      </div>
-                    </div>
-                  </div>
 
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs sm:text-sm font-bold text-slate-500 font-mono">
-                      {formatRupiah(acc.balance)}
-                    </span>
-                    <button
-                      onClick={() => onToggleArchive(acc.id)}
-                      className="px-2.5 py-1 text-xs bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-medium rounded-lg transition-colors"
-                    >
-                      Pulihkan
-                    </button>
-                  </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs sm:text-sm font-bold text-slate-500 font-mono">
+                          {formatRupiah(acc.balance)}
+                        </span>
+                        <button
+                          onClick={() => onToggleArchive(acc.id)}
+                          className="px-2.5 py-1 text-xs bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-medium rounded-lg transition-colors"
+                        >
+                          Pulihkan
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
           )}
         </div>
-      )}
+      </div>
 
       {/* 5. POP-UP DETAIL REKENING & MUTASI TRANSAKSI */}
       {selectedAccountForDetail && (

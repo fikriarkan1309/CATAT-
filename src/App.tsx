@@ -338,7 +338,7 @@ export default function App() {
   const hasCustomGradientHeader = currentTab === 'accounts' || currentTab === 'savings';
 
   return (
-    <div className="min-h-screen bg-white dark:bg-slate-950 flex flex-col font-sans text-slate-900 dark:text-slate-100 overflow-x-clip transition-colors">
+    <div className={`min-h-screen ${hasCustomGradientHeader ? 'h-screen h-dvh overflow-hidden' : ''} bg-white dark:bg-slate-950 flex flex-col font-sans text-slate-900 dark:text-slate-100 overflow-x-clip transition-colors`}>
       {/* Top Header Navigation (Logo 2.png + Settings Gear) - Hidden on accounts & savings which have custom gradient headers */}
       {!hasCustomGradientHeader && (
         <AppHeader
@@ -365,7 +365,7 @@ export default function App() {
       )}
 
       {/* Main Content Area */}
-      <main className="w-full flex-1 flex flex-col bg-white dark:bg-slate-950">
+      <main className={`w-full flex-1 flex flex-col ${hasCustomGradientHeader ? 'min-h-0 overflow-hidden' : ''} bg-white dark:bg-slate-950`}>
         {/* Sub-view Header with Back to Lainnya button */}
         {isSubViewFromMore && (
           <div className="max-w-lg mx-auto sm:max-w-xl md:max-w-2xl w-full px-4 pt-3 flex items-center justify-between">
@@ -417,7 +417,7 @@ export default function App() {
         {/* TAB 3: REKENING (Standalone View - Mockup Rekening_Baru_73f29a70.jpg) */}
         {/* ========================================================================= */}
         {currentTab === 'accounts' && (
-          <div className="w-full animate-in fade-in">
+          <div className="w-full flex-1 min-h-0 flex flex-col animate-in fade-in overflow-hidden">
             <AccountCards
               accounts={accounts}
               transactions={transactions}
@@ -458,7 +458,7 @@ export default function App() {
         {/* SUB MENU 2 DARI LAINNYA: TARGET TABUNGAN (Standalone - Mockup Tabungan_Baru_b9093882.jpg) */}
         {/* ========================================================================= */}
         {currentTab === 'savings' && (
-          <div className="w-full animate-in fade-in">
+          <div className="w-full flex-1 min-h-0 flex flex-col animate-in fade-in overflow-hidden">
             <SavingsGoalsSection
               goals={goals}
               accounts={accounts}

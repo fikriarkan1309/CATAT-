@@ -218,10 +218,13 @@ export const SavingsGoalsSection: React.FC<SavingsGoalsSectionProps> = ({
   };
 
   return (
-    <div className="w-full flex flex-col">
-      {/* 1. TOP BLUE GRADIENT HERO HEADER (Mockup Tabungan_Baru_b9093882.jpg) */}
-      <div className="w-full bg-gradient-to-b from-[#0052b4] via-[#0170d5] to-[#2cbdf8] text-white pt-2 sm:pt-3 pb-6 px-4 select-none">
-        <div className="max-w-lg mx-auto sm:max-w-xl md:max-w-2xl w-full">
+    <div className="w-full flex-1 min-h-0 flex flex-col overflow-hidden bg-white dark:bg-slate-950">
+      {/* 1. TOP BLUE GRADIENT HERO HEADER (FREEZE / TIDAK BERGERAK - Mockup Tabungan Baru.jpg) */}
+      <div
+        className="w-full shrink-0 text-white pt-2 sm:pt-3 pb-11 px-4 select-none relative z-10"
+        style={{ background: 'linear-gradient(180deg, #0052b4 0%, #0170d5 50%, #2cbdf8 100%)' }}
+      >
+        <div className="max-w-2xl mx-auto w-full">
           {/* Header Bar: Logo 3.png (Left) & Settings Gear (Right) */}
           <div className="flex items-center justify-between py-1 mb-2">
             <button
@@ -329,9 +332,9 @@ export const SavingsGoalsSection: React.FC<SavingsGoalsSectionProps> = ({
         </div>
       </div>
 
-      {/* 2. DAFTAR KOTAKAN TARGET TABUNGAN (Curved White Card Container) */}
-      <div className="max-w-lg mx-auto sm:max-w-xl md:max-w-2xl w-full px-3 sm:px-4 -mt-2 pb-24">
-        <div className="bg-white dark:bg-slate-900 rounded-[28px] sm:rounded-[32px] border border-slate-200/80 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 p-2 sm:p-3">
+      {/* 2. DAFTAR KOTAKAN TARGET TABUNGAN (SELEBAR LAYAR, LENGKUNGAN PERSIS REFERENSI DENGAN SHADOW KE ATAS) */}
+      <div className="flex-1 min-h-0 w-full bg-white dark:bg-slate-900 rounded-t-[32px] sm:rounded-t-[36px] -mt-[32px] sm:-mt-[36px] shadow-[0_-8px_20px_rgba(0,0,0,0.12)] dark:shadow-[0_-8px_20px_rgba(0,0,0,0.35)] overflow-y-auto no-scrollbar pb-28 relative z-20">
+        <div className="w-full max-w-2xl mx-auto px-4 sm:px-6 py-2 divide-y divide-slate-100 dark:divide-slate-800">
         {filteredGoals.length === 0 ? (
           <div className="p-8 text-center">
             <div className="w-12 h-12 mx-auto mb-3 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 dark:text-slate-500">
