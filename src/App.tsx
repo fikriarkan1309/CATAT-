@@ -325,10 +325,9 @@ export default function App() {
     isSyncModalOpen,
   ]);
 
-  // Determine if on a sub-view originating from 'Lainnya'
+  // Determine if on a sub-view originating from 'Lainnya' (savings has its own full-bleed header matching Rekening)
   const isSubViewFromMore = [
     'comparison',
-    'savings',
     'budgets',
     'bills',
     'debts',
@@ -336,17 +335,21 @@ export default function App() {
     'categories',
   ].includes(currentTab);
 
+  const hasCustomGradientHeader = currentTab === 'accounts' || currentTab === 'savings';
+
   return (
     <div className="min-h-screen bg-white dark:bg-slate-950 flex flex-col font-sans text-slate-900 dark:text-slate-100 overflow-x-clip transition-colors">
-      {/* Top Header Navigation (Logo 2.png + Settings Gear) */}
-      <AppHeader
-        onLogoClick={() => handleSelectTab('home')}
-        onOpenSettings={() => setIsSettingsMenuOpen(true)}
-        isOnline={isOnline}
-        isSyncing={isSyncing}
-        pendingSyncCount={pendingSyncCount}
-        onOpenSyncQueue={() => setIsSyncModalOpen(true)}
-      />
+      {/* Top Header Navigation (Logo 2.png + Settings Gear) - Hidden on accounts & savings which have custom gradient headers */}
+      {!hasCustomGradientHeader && (
+        <AppHeader
+          onLogoClick={() => handleSelectTab('home')}
+          onOpenSettings={() => setIsSettingsMenuOpen(true)}
+          isOnline={isOnline}
+          isSyncing={isSyncing}
+          pendingSyncCount={pendingSyncCount}
+          onOpenSyncQueue={() => setIsSyncModalOpen(true)}
+        />
+      )}
 
       {/* Offline Alert Banner (Jika Offline) */}
       {!isOnline && (
@@ -411,10 +414,10 @@ export default function App() {
         )}
 
         {/* ========================================================================= */}
-        {/* TAB 3: REKENING (Standalone View) */}
+        {/* TAB 3: REKENING (Standalone View - Mockup Rekening_Baru_73f29a70.jpg) */}
         {/* ========================================================================= */}
         {currentTab === 'accounts' && (
-          <div className="max-w-lg mx-auto sm:max-w-xl md:max-w-2xl w-full px-3 py-2 pb-24 animate-in fade-in space-y-4">
+          <div className="w-full animate-in fade-in">
             <AccountCards
               accounts={accounts}
               transactions={transactions}
@@ -426,6 +429,8 @@ export default function App() {
               onToggleArchive={toggleArchiveAccount}
               onDeleteAccount={deleteAccount}
               onAddNewAccount={handleStartAddAccount}
+              onOpenSettings={() => setIsSettingsMenuOpen(true)}
+              onLogoClick={() => handleSelectTab('home')}
             />
           </div>
         )}
@@ -450,10 +455,10 @@ export default function App() {
         )}
 
         {/* ========================================================================= */}
-        {/* SUB MENU 2 DARI LAINNYA: TARGET TABUNGAN (Standalone) */}
+        {/* SUB MENU 2 DARI LAINNYA: TARGET TABUNGAN (Standalone - Mockup Tabungan_Baru_b9093882.jpg) */}
         {/* ========================================================================= */}
         {currentTab === 'savings' && (
-          <div className="max-w-lg mx-auto sm:max-w-xl md:max-w-2xl w-full px-3 py-2 pb-24 animate-in fade-in space-y-4">
+          <div className="w-full animate-in fade-in">
             <SavingsGoalsSection
               goals={goals}
               accounts={accounts}
@@ -462,6 +467,8 @@ export default function App() {
               onDeleteGoal={deleteGoal}
               onDepositToGoal={depositToGoal}
               onWithdrawFromGoal={withdrawFromGoal}
+              onOpenSettings={() => setIsSettingsMenuOpen(true)}
+              onLogoClick={() => handleSelectTab('home')}
             />
           </div>
         )}

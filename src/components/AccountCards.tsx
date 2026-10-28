@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { Account, AccountType, Category, Transaction } from '../types/finance';
 import { formatRupiah, formatDateIndo } from '../lib/formatters';
+import { AppIcon } from './AppIcon';
 
 interface AccountCardsProps {
   accounts: Account[];
@@ -31,6 +32,8 @@ interface AccountCardsProps {
   onToggleArchive: (accountId: string) => void;
   onDeleteAccount: (accountId: string) => void;
   onAddNewAccount: () => void;
+  onOpenSettings?: () => void;
+  onLogoClick?: () => void;
 }
 
 export const AccountCards: React.FC<AccountCardsProps> = ({
@@ -44,6 +47,8 @@ export const AccountCards: React.FC<AccountCardsProps> = ({
   onToggleArchive,
   onDeleteAccount,
   onAddNewAccount,
+  onOpenSettings,
+  onLogoClick,
 }) => {
   const [selectedAccountForDetail, setSelectedAccountForDetail] = useState<Account | null>(null);
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
@@ -106,63 +111,89 @@ export const AccountCards: React.FC<AccountCardsProps> = ({
     : [];
 
   return (
-    <div className="space-y-4 max-w-4xl mx-auto w-full">
-      {/* 2. CARD TOTAL SALDO & ASET */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 p-4 sm:p-5 shadow-2xs">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
-          {/* Sisi Kiri: Total & Nominal Utama */}
-          <div className="min-w-0">
-            <span className="text-xs sm:text-sm font-semibold text-slate-500 dark:text-slate-400 block truncate">
-              Total
-            </span>
-            <div className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white font-mono tracking-tight mt-0.5 truncate">
-              {formatRupiah(totalBalance)}
-            </div>
-            <span className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 block truncate">
-              {activeAccounts.length} rekening terdaftar
-            </span>
+    <div className="w-full flex flex-col">
+      {/* 1. TOP BLUE GRADIENT HERO HEADER (Mockup Rekening_Baru_73f29a70.jpg) */}
+      <div className="w-full bg-gradient-to-b from-[#0052b4] via-[#0170d5] to-[#2cbdf8] text-white pt-2 sm:pt-3 pb-8 px-4 select-none">
+        <div className="max-w-lg mx-auto sm:max-w-xl md:max-w-2xl w-full">
+          {/* Header Bar: Logo 3.png (Left) & Settings Gear (Right) */}
+          <div className="flex items-center justify-between py-1 mb-2">
+            <button
+              type="button"
+              onClick={onLogoClick}
+              className="group flex items-center transition-transform active:scale-95 cursor-pointer"
+              title="Ke Beranda Catatin!"
+            >
+              <img
+                src="/Logo 3.png"
+                alt="Catatin!"
+                className="h-8 sm:h-9 w-auto max-w-[160px] object-contain drop-shadow-xs"
+                onError={(e) => {
+                  const target = e.currentTarget;
+                  if (!target.src.includes('%20')) {
+                    target.src = '/Logo%203.png';
+                  }
+                }}
+              />
+            </button>
+
+            <button
+              type="button"
+              onClick={onOpenSettings}
+              className="p-1 rounded-xl text-white hover:text-white/80 active:scale-90 transition-transform cursor-pointer"
+              title="Pengaturan & Akun"
+              aria-label="Buka Pengaturan"
+            >
+              <AppIcon name="settings" className="w-7 h-7 text-white" />
+            </button>
           </div>
 
-          {/* Sisi Kanan: Hanya Aset */}
-          <div className="pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 dark:border-slate-800 sm:border-l sm:pl-6 flex items-center justify-between sm:justify-end gap-3 min-w-[150px]">
-            <div className="flex items-center gap-2 text-xs sm:text-sm text-slate-600 dark:text-slate-400 font-medium">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0"></span>
-              <span>Aset</span>
-            </div>
-            <span className="font-mono font-bold text-slate-900 dark:text-white text-sm sm:text-base">
-              {formatRupiah(totalAssets)}
+          {/* Centered Total Aset + Nominal + '+ Rekening' button */}
+          <div className="flex flex-col items-center justify-center text-center pt-1 pb-3">
+            <span className="text-xs sm:text-sm font-semibold text-sky-100 tracking-wide">
+              Total Aset
             </span>
+            <div className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight font-sans my-1">
+              {formatRupiah(totalAssets)}
+            </div>
+            <button
+              type="button"
+              onClick={onAddNewAccount}
+              className="mt-2 bg-white text-sky-600 hover:bg-sky-50 font-bold px-4 py-1.5 rounded-full shadow-md text-xs sm:text-sm inline-flex items-center gap-1 active:scale-95 transition-all cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5 stroke-[3]" />
+              <span>Rekening</span>
+            </button>
           </div>
         </div>
       </div>
 
-      {/* 3. DAFTAR REKENING VERTIKAL */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xs divide-y divide-slate-100 dark:divide-slate-800">
-        {activeAccounts.length === 0 ? (
-          <div className="p-8 text-center">
-            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mb-3">
-              Belum ada rekening aktif.
-            </p>
-            <button
-              type="button"
-              onClick={onAddNewAccount}
-              className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 text-white text-xs font-semibold rounded-xl transition-colors shadow-xs"
-            >
-              <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-              <span>Tambah Rekening Baru</span>
-            </button>
-          </div>
-        ) : (
-          <>
-            {activeAccounts.map((acc) => (
+      {/* 2. DAFTAR REKENING VERTIKAL (Curved White Card Container) */}
+      <div className="max-w-lg mx-auto sm:max-w-xl md:max-w-2xl w-full px-3 sm:px-4 -mt-4 pb-24">
+        <div className="bg-white dark:bg-slate-900 rounded-[28px] sm:rounded-[32px] border border-slate-200/80 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 p-2 sm:p-3">
+          {activeAccounts.length === 0 ? (
+            <div className="p-8 text-center">
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mb-3">
+                Belum ada rekening aktif.
+              </p>
+              <button
+                type="button"
+                onClick={onAddNewAccount}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 text-white text-xs font-semibold rounded-xl transition-colors shadow-xs"
+              >
+                <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                <span>Tambah Rekening Baru</span>
+              </button>
+            </div>
+          ) : (
+            activeAccounts.map((acc) => (
               <div
                 key={acc.id}
                 onClick={() => setSelectedAccountForDetail(acc)}
-                className={`p-3.5 sm:p-4 flex items-center justify-between hover:bg-slate-50/80 dark:hover:bg-slate-800/60 transition-colors group cursor-pointer gap-2 first:rounded-t-2xl sm:first:rounded-t-3xl last:rounded-b-2xl sm:last:rounded-b-3xl ${
+                className={`p-3 sm:p-3.5 flex items-center justify-between hover:bg-slate-50/80 dark:hover:bg-slate-800/60 transition-colors group cursor-pointer gap-2 first:rounded-t-2xl sm:first:rounded-t-3xl last:rounded-b-2xl sm:last:rounded-b-3xl ${
                   openDropdownId === acc.id ? 'relative z-40' : 'relative z-10'
                 }`}
               >
-                {/* Sisi Kiri: Ikon Berwarna + Nama & Nomor Akun */}
+                {/* Sisi Kiri: Ikon Berwarna + Nama & Jenis */}
                 <div className="flex items-center gap-3 min-w-0 flex-1">
                   <div
                     className="w-10 h-10 rounded-2xl flex items-center justify-center text-white shadow-2xs shrink-0 transition-transform group-hover:scale-105"
@@ -174,14 +205,8 @@ export const AccountCards: React.FC<AccountCardsProps> = ({
                     <div className="text-sm sm:text-base font-bold text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors truncate">
                       {acc.name}
                     </div>
-                    <div className="text-xs text-slate-500 dark:text-slate-400 font-medium flex items-center gap-1.5 mt-0.5">
-                      <span>{getAccountTypeLabel(acc.type)}</span>
-                      {acc.accountNumber && (
-                        <>
-                          <span className="text-slate-300 dark:text-slate-600">·</span>
-                          <span className="font-mono text-slate-600 dark:text-slate-400">•••• {acc.accountNumber.slice(-4)}</span>
-                        </>
-                      )}
+                    <div className="text-xs text-slate-400 font-medium capitalize mt-0.5">
+                      {getAccountTypeLabel(acc.type)}
                     </div>
                   </div>
                 </div>
@@ -191,36 +216,9 @@ export const AccountCards: React.FC<AccountCardsProps> = ({
                   className="flex items-center gap-2 sm:gap-3 shrink-0"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  {/* Quick Action Pill Buttons on desktop */}
-                  <div className="hidden md:flex items-center gap-1 mr-1">
-                    <button
-                      onClick={() => onAddIncome(acc.id)}
-                      className="w-7 h-7 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900 text-emerald-700 dark:text-emerald-400 rounded-lg flex items-center justify-center transition-colors"
-                      title="Tambah Pemasukan"
-                    >
-                      <Plus className="w-3.5 h-3.5 stroke-[3]" />
-                    </button>
-
-                    <button
-                      onClick={() => onAddExpense(acc.id)}
-                      className="w-7 h-7 bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 dark:hover:bg-rose-900 text-rose-700 dark:text-rose-400 rounded-lg flex items-center justify-center transition-colors"
-                      title="Tambah Pengeluaran"
-                    >
-                      <Minus className="w-3.5 h-3.5 stroke-[3]" />
-                    </button>
-
-                    <button
-                      onClick={() => onTransfer(acc.id)}
-                      className="w-7 h-7 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900 text-blue-700 dark:text-blue-400 rounded-lg flex items-center justify-center transition-colors"
-                      title="Transfer Antar Rekening"
-                    >
-                      <ArrowLeftRight className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-
                   {/* Nominal Saldo */}
                   <div className="text-right">
-                    <span className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-white font-mono tabular-nums">
+                    <span className="text-sm sm:text-base font-bold text-slate-900 dark:text-white font-mono tabular-nums">
                       {formatRupiah(acc.balance)}
                     </span>
                   </div>
@@ -331,9 +329,9 @@ export const AccountCards: React.FC<AccountCardsProps> = ({
                   </div>
                 </div>
               </div>
-            ))}
-          </>
-        )}
+            ))
+          )}
+        </div>
       </div>
 
       {/* 4. REKENING DIARSIPKAN */}

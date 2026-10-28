@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { Account, SharedGoal } from '../types/finance';
 import { formatDateIndo, formatRupiah, formatCompactRupiah } from '../lib/formatters';
+import { AppIcon } from './AppIcon';
 
 interface SavingsGoalsSectionProps {
   goals: SharedGoal[];
@@ -44,6 +45,8 @@ interface SavingsGoalsSectionProps {
   onDeleteGoal: (id: string) => void;
   onDepositToGoal: (goalId: string, amount: number, sourceAccountId: string) => void;
   onWithdrawFromGoal: (goalId: string, amount: number, targetAccountId: string, notes?: string) => void;
+  onOpenSettings?: () => void;
+  onLogoClick?: () => void;
 }
 
 // 12 Line Icons with single-color style (no emojis)
@@ -87,6 +90,8 @@ export const SavingsGoalsSection: React.FC<SavingsGoalsSectionProps> = ({
   onDeleteGoal,
   onDepositToGoal,
   onWithdrawFromGoal,
+  onOpenSettings,
+  onLogoClick,
 }) => {
   // Filter state
   const [filter, setFilter] = useState<'all' | 'active' | 'completed'>('all');
@@ -213,31 +218,62 @@ export const SavingsGoalsSection: React.FC<SavingsGoalsSectionProps> = ({
   };
 
   return (
-    <div className="space-y-3.5 max-w-4xl mx-auto w-full overflow-hidden">
-      {/* 1. TOP CARD SUMMARY (Ramping & Seragam dengan Rekening & Anggaran) */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 p-3.5 sm:p-5 shadow-2xs">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
-          {/* Sisi Kiri: Total & Nominal Utama */}
-          <div className="min-w-0">
-            <span className="text-xs sm:text-sm font-semibold text-slate-500 dark:text-slate-400 block truncate">
+    <div className="w-full flex flex-col">
+      {/* 1. TOP BLUE GRADIENT HERO HEADER (Mockup Tabungan_Baru_b9093882.jpg) */}
+      <div className="w-full bg-gradient-to-b from-[#0052b4] via-[#0170d5] to-[#2cbdf8] text-white pt-2 sm:pt-3 pb-6 px-4 select-none">
+        <div className="max-w-lg mx-auto sm:max-w-xl md:max-w-2xl w-full">
+          {/* Header Bar: Logo 3.png (Left) & Settings Gear (Right) */}
+          <div className="flex items-center justify-between py-1 mb-2">
+            <button
+              type="button"
+              onClick={onLogoClick}
+              className="group flex items-center transition-transform active:scale-95 cursor-pointer"
+              title="Ke Beranda Catatin!"
+            >
+              <img
+                src="/Logo 3.png"
+                alt="Catatin!"
+                className="h-8 sm:h-9 w-auto max-w-[160px] object-contain drop-shadow-xs"
+                onError={(e) => {
+                  const target = e.currentTarget;
+                  if (!target.src.includes('%20')) {
+                    target.src = '/Logo%203.png';
+                  }
+                }}
+              />
+            </button>
+
+            <button
+              type="button"
+              onClick={onOpenSettings}
+              className="p-1 rounded-xl text-white hover:text-white/80 active:scale-90 transition-transform cursor-pointer"
+              title="Pengaturan & Akun"
+              aria-label="Buka Pengaturan"
+            >
+              <AppIcon name="settings" className="w-7 h-7 text-white" />
+            </button>
+          </div>
+
+          {/* Centered Total Dana Tabungan Terkumpul + Subtitle */}
+          <div className="flex flex-col items-center justify-center text-center pt-1 pb-3">
+            <span className="text-xs sm:text-sm font-semibold text-sky-100 tracking-wide">
               Total Dana Tabungan Terkumpul
             </span>
-            <div className="text-xl sm:text-3xl font-black text-slate-900 dark:text-white font-mono tracking-tight mt-0.5 truncate">
+            <div className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight font-sans my-1">
               {formatRupiah(totalCurrent)}
             </div>
-            <span className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 block truncate">
+            <span className="text-xs sm:text-sm text-sky-200/90 font-medium">
               {goals.length} target · {completedCount} tercapai ({totalPercentage}%)
             </span>
           </div>
 
-          {/* Sisi Kanan: Target & Tombol Tambah Target */}
-          <div className="pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 dark:border-slate-800 sm:border-l sm:pl-6 flex items-center justify-between sm:justify-end gap-3 flex-wrap">
-            <div className="text-right">
-              <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 font-medium">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0"></span>
-                <span>Total Target</span>
-              </div>
-              <span className="font-mono font-bold text-slate-900 dark:text-white text-xs sm:text-base block mt-0.5">
+          {/* Row: Total Target (Left) and '+ Target' button (Right) */}
+          <div className="flex items-center justify-between pt-1 pb-3.5">
+            <div>
+              <span className="text-xs text-sky-100 font-medium block">
+                Total Target
+              </span>
+              <span className="text-base sm:text-lg font-bold text-white tracking-tight font-mono">
                 {formatRupiah(totalTarget)}
               </span>
             </div>
@@ -245,56 +281,57 @@ export const SavingsGoalsSection: React.FC<SavingsGoalsSectionProps> = ({
             <button
               type="button"
               onClick={handleOpenAdd}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 text-white text-xs font-semibold rounded-xl transition-colors shadow-xs shrink-0"
+              className="bg-white text-sky-600 hover:bg-sky-50 font-bold px-4 py-1.5 rounded-full shadow-md text-xs sm:text-sm inline-flex items-center gap-1 active:scale-95 transition-all cursor-pointer"
             >
-              <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-              <span>Tambah Target</span>
+              <Plus className="w-3.5 h-3.5 stroke-[3]" />
+              <span>Target</span>
             </button>
+          </div>
+
+          {/* Centered Filter Pills: Semua (6), Berjalan (5), Tercapai (1) */}
+          <div className="flex items-center justify-center pt-0.5 pb-1">
+            <div className="inline-flex p-1 bg-white/95 dark:bg-slate-800 rounded-full shadow-sm border border-white/60 dark:border-slate-700">
+              <button
+                type="button"
+                onClick={() => setFilter('all')}
+                className={`px-3.5 py-1 rounded-full text-xs font-bold transition-all ${
+                  filter === 'all'
+                    ? 'bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-white shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 font-semibold'
+                }`}
+              >
+                Semua ({goals.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilter('active')}
+                className={`px-3.5 py-1 rounded-full text-xs font-bold transition-all ${
+                  filter === 'active'
+                    ? 'bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-white shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 font-semibold'
+                }`}
+              >
+                Berjalan ({activeCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilter('completed')}
+                className={`px-3.5 py-1 rounded-full text-xs font-bold transition-all ${
+                  filter === 'completed'
+                    ? 'bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-white shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 font-semibold'
+                }`}
+              >
+                Tercapai ({completedCount})
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* 2. FILTER PILLS */}
-      <div className="flex items-center justify-between">
-        <div className="inline-flex p-1 bg-slate-100 dark:bg-slate-800/80 rounded-2xl border border-slate-200 dark:border-slate-700">
-          <button
-            type="button"
-            onClick={() => setFilter('all')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-              filter === 'all'
-                ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            Semua ({goals.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setFilter('active')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-              filter === 'active'
-                ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            Berjalan ({activeCount})
-          </button>
-          <button
-            type="button"
-            onClick={() => setFilter('completed')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-              filter === 'completed'
-                ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            Tercapai ({completedCount})
-          </button>
-        </div>
-      </div>
-
-      {/* 3. DAFTAR KOTAKAN TARGET TABUNGAN (Ramping, Rapi, One-Color Line Icons) */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xs divide-y divide-slate-100 dark:divide-slate-800/80">
+      {/* 2. DAFTAR KOTAKAN TARGET TABUNGAN (Curved White Card Container) */}
+      <div className="max-w-lg mx-auto sm:max-w-xl md:max-w-2xl w-full px-3 sm:px-4 -mt-2 pb-24">
+        <div className="bg-white dark:bg-slate-900 rounded-[28px] sm:rounded-[32px] border border-slate-200/80 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 p-2 sm:p-3">
         {filteredGoals.length === 0 ? (
           <div className="p-8 text-center">
             <div className="w-12 h-12 mx-auto mb-3 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 dark:text-slate-500">
@@ -483,11 +520,11 @@ export const SavingsGoalsSection: React.FC<SavingsGoalsSectionProps> = ({
                   </div>
                 </div>
 
-                {/* Progress Bar Ramping (Identik dengan Budget & Rekening) */}
-                <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                {/* Progress Bar (Identik dengan Mockup Tabungan_Baru_b9093882.jpg) */}
+                <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2 overflow-hidden mt-1">
                   <div
                     className={`h-full rounded-full transition-all duration-500 ${
-                      isDone ? 'bg-emerald-500' : 'bg-slate-900 dark:bg-white'
+                      isDone ? 'bg-emerald-500' : 'bg-slate-900 dark:bg-slate-100'
                     }`}
                     style={{ width: `${progress}%` }}
                   />
@@ -496,6 +533,7 @@ export const SavingsGoalsSection: React.FC<SavingsGoalsSectionProps> = ({
             );
           })
         )}
+        </div>
       </div>
 
       {/* ========================================================================= */}
