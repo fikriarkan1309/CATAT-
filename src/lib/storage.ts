@@ -59,6 +59,7 @@ class OfflineStorageEngine {
   private isSyncing = false;
   private realtimeChannel: any = null;
   private heartbeatTimer: any = null;
+  private broadcastChannel: BroadcastChannel | null = null;
 
   constructor() {
     this.state = {
@@ -188,6 +189,26 @@ class OfflineStorageEngine {
       }
 
       if (typeof window !== 'undefined') {
+        if ('BroadcastChannel' in window) {
+          try {
+            this.broadcastChannel = new BroadcastChannel('catatin_realtime_sync_channel');
+            this.broadcastChannel.onmessage = (e) => {
+              if (e.data?.type === 'STATE_CHANGED') {
+                this.reloadFromLocalStorage();
+              }
+            };
+          } catch {}
+        }
+
+        window.addEventListener('storage', (e) => {
+          if (
+            e.key === 'keluarga_fin_state' ||
+            (this.state.currentUserEmail && e.key === `keluarga_fin_state_${this.state.currentUserEmail}`)
+          ) {
+            this.reloadFromLocalStorage();
+          }
+        });
+
         const stored = localStorage.getItem('keluarga_fin_supabase_config');
         if (stored && stored.includes('/rest/v1')) {
           localStorage.removeItem('keluarga_fin_supabase_config');
@@ -270,6 +291,24 @@ class OfflineStorageEngine {
     }
   }
 
+  public reloadFromLocalStorage() {
+    try {
+      const activeEmail = localStorage.getItem('keluarga_fin_current_user') || this.state.currentUserEmail;
+      if (!activeEmail) return;
+      const saved = localStorage.getItem(`keluarga_fin_state_${activeEmail}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        this.state = {
+          ...this.state,
+          ...parsed,
+        };
+        this.notify();
+      }
+    } catch (e) {
+      console.warn('Failed to reload from localStorage:', e);
+    }
+  }
+
   private persist() {
     try {
       if (this.state.currentUserEmail) {
@@ -280,6 +319,11 @@ class OfflineStorageEngine {
     } catch {
       // ignore
     }
+    try {
+      if (this.broadcastChannel) {
+        this.broadcastChannel.postMessage({ type: 'STATE_CHANGED', timestamp: Date.now() });
+      }
+    } catch {}
     this.notify();
   }
 
@@ -2502,7 +2546,6 @@ class OfflineStorageEngine {
         })).filter((a: Account) => !a.isDeleted);
 
         const accMap = new Map<string, Account>();
-        // Pertahankan urutan lokal terlebih dahulu (rekening yang baru digunakan tetap di paling atas)
         for (const la of this.state.accounts) {
           if (la.isDeleted) continue;
           accMap.set(la.id, la);
@@ -2517,6 +2560,27 @@ class OfflineStorageEngine {
               accMap.set(ra.id, { ...accMap.get(ra.id)!, ...ra });
             } else {
               accMap.set(ra.id, ra);
+            }
+          }
+        }
+        const remoteAccIds = new Set(remoteAccs.map((r: any) => r.id));
+        for (const la of this.state.accounts) {
+          if (la.isDeleted) continue;
+          if (!remoteAccIds.has(la.id)) {
+            const isAlreadyQueued = this.state.syncQueue.some(
+              (q) => q.entityTable === 'accounts' && q.entityId === la.id
+            );
+            if (!isAlreadyQueued) {
+              this.state.syncQueue.push({
+                id: this.generateUUID(),
+                entityTable: 'accounts',
+                entityId: la.id,
+                operation: 'INSERT',
+                payload: la,
+                clientTimestamp: la.updatedAt || new Date().toISOString(),
+                status: 'pending',
+                retryCount: 0,
+              });
             }
           }
         }
@@ -2553,6 +2617,27 @@ class OfflineStorageEngine {
           if (pending && pending.operation === 'DELETE') continue;
           if (!catMap.has(lc.id) || pending) {
             catMap.set(lc.id, lc);
+          }
+        }
+        const remoteCatIds = new Set(remoteCats.map((r: any) => r.id));
+        for (const lc of this.state.categories) {
+          if (lc.isDeleted) continue;
+          if (!remoteCatIds.has(lc.id)) {
+            const isAlreadyQueued = this.state.syncQueue.some(
+              (q) => q.entityTable === 'categories' && q.entityId === lc.id
+            );
+            if (!isAlreadyQueued) {
+              this.state.syncQueue.push({
+                id: this.generateUUID(),
+                entityTable: 'categories',
+                entityId: lc.id,
+                operation: 'INSERT',
+                payload: lc,
+                clientTimestamp: new Date().toISOString(),
+                status: 'pending',
+                retryCount: 0,
+              });
+            }
           }
         }
         this.state.categories = Array.from(catMap.values());
@@ -2600,7 +2685,6 @@ class OfflineStorageEngine {
           if (!txMap.has(lt.id) || pending) {
             txMap.set(lt.id, lt);
           }
-          // Pastikan setiap transaksi lokal yang belum ada di server remote otomatis diantrekan ke syncQueue
           if (!remoteTxIds.has(lt.id)) {
             const isAlreadyQueued = this.state.syncQueue.some(
               (q) => q.entityTable === 'transactions' && q.entityId === lt.id
@@ -2660,6 +2744,27 @@ class OfflineStorageEngine {
             bMap.set(lb.id, lb);
           }
         }
+        const remoteBudIds = new Set(remoteBudgets.map((r: any) => r.id));
+        for (const lb of this.state.budgets) {
+          if (lb.isDeleted) continue;
+          if (!remoteBudIds.has(lb.id)) {
+            const isAlreadyQueued = this.state.syncQueue.some(
+              (q) => q.entityTable === 'budgets' && q.entityId === lb.id
+            );
+            if (!isAlreadyQueued) {
+              this.state.syncQueue.push({
+                id: this.generateUUID(),
+                entityTable: 'budgets',
+                entityId: lb.id,
+                operation: 'INSERT',
+                payload: lb,
+                clientTimestamp: lb.updatedAt || new Date().toISOString(),
+                status: 'pending',
+                retryCount: 0,
+              });
+            }
+          }
+        }
         this.state.budgets = Array.from(bMap.values());
       }
 
@@ -2694,6 +2799,26 @@ class OfflineStorageEngine {
           if (pending && pending.operation === 'DELETE') continue;
           if (!gMap.has(lg.id) || pending) {
             gMap.set(lg.id, lg);
+          }
+        }
+        const remoteGoalIds = new Set(remoteGoals.map((r: any) => r.id));
+        for (const lg of this.state.goals) {
+          if (!remoteGoalIds.has(lg.id)) {
+            const isAlreadyQueued = this.state.syncQueue.some(
+              (q) => q.entityTable === 'goals' && q.entityId === lg.id
+            );
+            if (!isAlreadyQueued) {
+              this.state.syncQueue.push({
+                id: this.generateUUID(),
+                entityTable: 'goals',
+                entityId: lg.id,
+                operation: 'INSERT',
+                payload: lg,
+                clientTimestamp: lg.updatedAt || new Date().toISOString(),
+                status: 'pending',
+                retryCount: 0,
+              });
+            }
           }
         }
         this.state.goals = Array.from(gMap.values());
@@ -2737,6 +2862,27 @@ class OfflineStorageEngine {
             billMap.set(lBill.id, lBill);
           }
         }
+        const remoteBillIds = new Set(remoteBills.map((r: any) => r.id));
+        for (const lBill of this.state.bills) {
+          if (lBill.isDeleted) continue;
+          if (!remoteBillIds.has(lBill.id)) {
+            const isAlreadyQueued = this.state.syncQueue.some(
+              (q) => q.entityTable === 'bills' && q.entityId === lBill.id
+            );
+            if (!isAlreadyQueued) {
+              this.state.syncQueue.push({
+                id: this.generateUUID(),
+                entityTable: 'bills',
+                entityId: lBill.id,
+                operation: 'INSERT',
+                payload: lBill,
+                clientTimestamp: lBill.updatedAt || new Date().toISOString(),
+                status: 'pending',
+                retryCount: 0,
+              });
+            }
+          }
+        }
         this.state.bills = Array.from(billMap.values());
       }
 
@@ -2776,6 +2922,27 @@ class OfflineStorageEngine {
           if (pending && pending.operation === 'DELETE') continue;
           if (!dMap.has(ld.id) || pending) {
             dMap.set(ld.id, ld);
+          }
+        }
+        const remoteDebtIds = new Set(remoteDebts.map((r: any) => r.id));
+        for (const ld of this.state.debts) {
+          if (ld.isDeleted) continue;
+          if (!remoteDebtIds.has(ld.id)) {
+            const isAlreadyQueued = this.state.syncQueue.some(
+              (q) => q.entityTable === 'debts' && q.entityId === ld.id
+            );
+            if (!isAlreadyQueued) {
+              this.state.syncQueue.push({
+                id: this.generateUUID(),
+                entityTable: 'debts',
+                entityId: ld.id,
+                operation: 'INSERT',
+                payload: ld,
+                clientTimestamp: ld.updatedAt || new Date().toISOString(),
+                status: 'pending',
+                retryCount: 0,
+              });
+            }
           }
         }
         this.state.debts = Array.from(dMap.values());
