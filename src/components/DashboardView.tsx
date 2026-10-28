@@ -11,6 +11,31 @@ import {
   PiggyBank,
   CheckCircle2,
   Building2,
+  ShoppingBag,
+  ShoppingCart,
+  Apple,
+  Zap,
+  Coffee,
+  Utensils,
+  Bike,
+  Car,
+  Fuel,
+  Navigation,
+  Wrench,
+  Film,
+  Tv,
+  Compass,
+  GraduationCap,
+  School,
+  BookOpen,
+  Smile,
+  HeartPulse,
+  Stethoscope,
+  Pill,
+  Briefcase,
+  Laptop,
+  Receipt,
+  Tag,
 } from 'lucide-react';
 import {
   Account,
@@ -212,19 +237,64 @@ const DonutArc: React.FC<{ income: number; expense: number }> = ({ income, expen
   );
 };
 
-// Helper for initial avatar letters and colors
-const getAvatarStyle = (text: string, index: number) => {
-  const colors = [
-    'bg-[#84CC16]', // Lime green like "G"
-    'bg-[#86EFAC] text-emerald-900', // Light green like "L"
-    'bg-[#6366F1]', // Indigo like "D"
-    'bg-[#EC4899]', // Pink
-    'bg-[#06B6D4]', // Cyan
-    'bg-[#F59E0B]', // Amber
-  ];
-  const char = (text || 'T').trim().charAt(0).toUpperCase();
-  const colorClass = colors[index % colors.length];
-  return { char, colorClass };
+// Helper mapping category icon names to Lucide icons matching Kategori menu
+const getCategoryIcon = (iconName?: string) => {
+  switch (iconName) {
+    case 'ShoppingBag':
+      return <ShoppingBag className="w-4 h-4 stroke-[2.2]" />;
+    case 'ShoppingCart':
+      return <ShoppingCart className="w-4 h-4 stroke-[2.2]" />;
+    case 'Apple':
+      return <Apple className="w-4 h-4 stroke-[2.2]" />;
+    case 'Zap':
+      return <Zap className="w-4 h-4 stroke-[2.2]" />;
+    case 'Coffee':
+      return <Coffee className="w-4 h-4 stroke-[2.2]" />;
+    case 'Utensils':
+      return <Utensils className="w-4 h-4 stroke-[2.2]" />;
+    case 'Bike':
+      return <Bike className="w-4 h-4 stroke-[2.2]" />;
+    case 'Car':
+      return <Car className="w-4 h-4 stroke-[2.2]" />;
+    case 'Fuel':
+      return <Fuel className="w-4 h-4 stroke-[2.2]" />;
+    case 'Navigation':
+      return <Navigation className="w-4 h-4 stroke-[2.2]" />;
+    case 'Wrench':
+      return <Wrench className="w-4 h-4 stroke-[2.2]" />;
+    case 'Film':
+      return <Film className="w-4 h-4 stroke-[2.2]" />;
+    case 'Tv':
+      return <Tv className="w-4 h-4 stroke-[2.2]" />;
+    case 'Compass':
+      return <Compass className="w-4 h-4 stroke-[2.2]" />;
+    case 'GraduationCap':
+      return <GraduationCap className="w-4 h-4 stroke-[2.2]" />;
+    case 'School':
+      return <School className="w-4 h-4 stroke-[2.2]" />;
+    case 'BookOpen':
+      return <BookOpen className="w-4 h-4 stroke-[2.2]" />;
+    case 'Smile':
+      return <Smile className="w-4 h-4 stroke-[2.2]" />;
+    case 'HeartPulse':
+      return <HeartPulse className="w-4 h-4 stroke-[2.2]" />;
+    case 'Stethoscope':
+      return <Stethoscope className="w-4 h-4 stroke-[2.2]" />;
+    case 'Pill':
+      return <Pill className="w-4 h-4 stroke-[2.2]" />;
+    case 'Briefcase':
+      return <Briefcase className="w-4 h-4 stroke-[2.2]" />;
+    case 'Laptop':
+      return <Laptop className="w-4 h-4 stroke-[2.2]" />;
+    case 'TrendingUp':
+      return <TrendingUp className="w-4 h-4 stroke-[2.2]" />;
+    case 'Wallet':
+      return <Wallet className="w-4 h-4 stroke-[2.2]" />;
+    case 'Tag':
+      return <Tag className="w-4 h-4 stroke-[2.2]" />;
+    default:
+      return <Receipt className="w-4 h-4 stroke-[2.2]" />;
+  }
 };
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
@@ -306,8 +376,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   const maxExpenseDay = Math.max(...days.map((d) => d.total), 300000);
 
-  // 3. Recent Transactions (Top 4 latest)
-  const recentTxns = transactions.slice(0, 4);
+  // 3. Recent Transactions (Top 30 latest for scrollable view)
+  const recentTxns = transactions.slice(0, 30);
 
   // Category map
   const categoryMap = new Map(categories.map((c) => [c.id, c]));
@@ -640,21 +710,24 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </button>
           </div>
 
-          <div className="p-3 divide-y divide-slate-100 dark:divide-slate-800">
-            {recentTxns.map((t, idx) => {
+          <div className="p-3 divide-y divide-slate-100 dark:divide-slate-800 max-h-[225px] sm:max-h-[245px] overflow-y-auto no-scrollbar">
+            {recentTxns.map((t) => {
               const acc = accountMap.get(t.accountId);
+              const cat = categoryMap.get(t.categoryId);
               const isIncome = t.type === 'income';
               const isTransfer = t.type === 'transfer';
               const toAcc = t.targetAccountId ? accountMap.get(t.targetAccountId) : undefined;
 
               // Display label
-              let title = t.notes || (t.categoryId ? categoryMap.get(t.categoryId)?.name : undefined) || 'Transaksi';
+              let title = t.notes || (t.categoryId ? cat?.name : undefined) || 'Transaksi';
               if (isTransfer) {
                 title = 'Transfer Antar Rekening';
               }
 
-              const { char, colorClass } = getAvatarStyle(title || 'T', idx);
               const formattedDate = t.transactionDate ? formatDateIndo(t.transactionDate) : '';
+              const iconBg = isTransfer
+                ? '#0EA5E9'
+                : cat?.color || (isIncome ? '#10B981' : '#F43F5E');
 
               return (
                 <div
@@ -662,12 +735,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   onClick={() => onNavigateTab('transactions')}
                   className="py-2.5 first:pt-0.5 last:pb-0.5 flex items-center justify-between gap-3 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 rounded-xl px-1.5 transition-colors"
                 >
-                  {/* Left: Avatar Letter Badge */}
+                  {/* Left: Category Icon & Box Color matching Kategori Menu */}
                   <div className="flex items-center gap-3 min-w-0">
                     <div
-                      className={`w-9 h-9 rounded-xl ${colorClass} text-white font-extrabold flex items-center justify-center shrink-0 text-sm shadow-xs`}
+                      className="w-9 h-9 rounded-xl text-white font-extrabold flex items-center justify-center shrink-0 shadow-2xs"
+                      style={{ backgroundColor: iconBg }}
                     >
-                      {char}
+                      {isTransfer ? (
+                        <ArrowLeftRight className="w-4 h-4 stroke-[2.5]" />
+                      ) : (
+                        getCategoryIcon(cat?.icon)
+                      )}
                     </div>
 
                     {/* Middle: Title & Account + Date */}
