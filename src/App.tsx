@@ -325,17 +325,20 @@ export default function App() {
     isSyncModalOpen,
   ]);
 
-  // Determine if on a sub-view originating from 'Lainnya' (savings has its own full-bleed header matching Rekening)
+  // Determine if on a sub-view originating from 'Lainnya' requiring a back button
   const isSubViewFromMore = [
     'comparison',
     'budgets',
-    'bills',
-    'debts',
-    'transactions',
     'categories',
   ].includes(currentTab);
 
-  const hasCustomGradientHeader = currentTab === 'accounts' || currentTab === 'savings';
+  const hasCustomGradientHeader = [
+    'accounts',
+    'savings',
+    'bills',
+    'debts',
+    'transactions',
+  ].includes(currentTab);
 
   return (
     <div className={`min-h-screen ${hasCustomGradientHeader ? 'h-screen h-dvh overflow-hidden' : ''} bg-white dark:bg-slate-950 flex flex-col font-sans text-slate-900 dark:text-slate-100 overflow-x-clip transition-colors`}>
@@ -493,10 +496,10 @@ export default function App() {
         )}
 
         {/* ========================================================================= */}
-        {/* SUB MENU 4 DARI LAINNYA: TAGIHAN RUTIN (Standalone) */}
+        {/* SUB MENU 4 DARI LAINNYA: TAGIHAN RUTIN (Standalone - Hero Header Frozen) */}
         {/* ========================================================================= */}
         {currentTab === 'bills' && (
-          <div className="max-w-lg mx-auto sm:max-w-xl md:max-w-2xl w-full px-3 py-2 pb-24 animate-in fade-in space-y-4">
+          <div className="w-full flex-1 min-h-0 flex flex-col animate-in fade-in overflow-hidden">
             <RecurringBillsSection
               bills={bills}
               accounts={accounts}
@@ -506,15 +509,17 @@ export default function App() {
               onDeleteBill={deleteBill}
               onPayBill={payBill}
               onUnpayBill={unpayBill}
+              onOpenSettings={() => setIsSettingsMenuOpen(true)}
+              onLogoClick={() => handleSelectTab('home')}
             />
           </div>
         )}
 
         {/* ========================================================================= */}
-        {/* SUB MENU 5 DARI LAINNYA: HUTANG & PIUTANG (Standalone, tetap bersama) */}
+        {/* SUB MENU 5 DARI LAINNYA: HUTANG & PIUTANG (Standalone - Hero Header Frozen) */}
         {/* ========================================================================= */}
         {currentTab === 'debts' && (
-          <div className="max-w-lg mx-auto sm:max-w-xl md:max-w-2xl w-full px-3 py-2 pb-24 animate-in fade-in">
+          <div className="w-full flex-1 min-h-0 flex flex-col animate-in fade-in overflow-hidden">
             <DebtsLoansView
               debts={debts}
               accounts={accounts}
@@ -522,15 +527,17 @@ export default function App() {
               onUpdateDebt={updateDebt}
               onDeleteDebt={deleteDebt}
               onRecordPayment={recordDebtPayment}
+              onOpenSettings={() => setIsSettingsMenuOpen(true)}
+              onLogoClick={() => handleSelectTab('home')}
             />
           </div>
         )}
 
         {/* ========================================================================= */}
-        {/* SUB MENU 6 DARI LAINNYA: TRANSAKSI (Standalone) */}
+        {/* SUB MENU 6 DARI LAINNYA: TRANSAKSI (Standalone - Hero Header Frozen) */}
         {/* ========================================================================= */}
         {currentTab === 'transactions' && (
-          <div className="max-w-lg mx-auto sm:max-w-xl md:max-w-2xl w-full px-3 py-2 pb-24 animate-in fade-in space-y-4">
+          <div className="w-full flex-1 min-h-0 flex flex-col animate-in fade-in overflow-hidden">
             <RecentTransactions
               transactions={transactions}
               accounts={accounts}
@@ -538,6 +545,8 @@ export default function App() {
               onDeleteTransaction={deleteTransaction}
               onUpdateTransaction={updateTransaction}
               onQuickAdd={() => handleOpenExpense()}
+              onOpenSettings={() => setIsSettingsMenuOpen(true)}
+              onLogoClick={() => handleSelectTab('home')}
             />
           </div>
         )}

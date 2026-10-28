@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { Account, DebtItem, DebtPayment, DebtType } from '../types/finance';
 import { formatDateIndo, formatRupiah, formatCompactRupiah } from '../lib/formatters';
+import { AppIcon } from './AppIcon';
 
 interface DebtsLoansViewProps {
   debts: DebtItem[];
@@ -46,6 +47,8 @@ interface DebtsLoansViewProps {
       date?: string;
     }
   ) => void;
+  onOpenSettings?: () => void;
+  onLogoClick?: () => void;
 }
 
 export const DebtsLoansView: React.FC<DebtsLoansViewProps> = ({
@@ -55,6 +58,8 @@ export const DebtsLoansView: React.FC<DebtsLoansViewProps> = ({
   onUpdateDebt,
   onDeleteDebt,
   onRecordPayment,
+  onOpenSettings,
+  onLogoClick,
 }) => {
   // Main Tab: 'debt' (Hutang Saya) | 'receivable' (Piutang Saya)
   const [activeType, setActiveType] = useState<DebtType>('debt');
@@ -200,138 +205,177 @@ export const DebtsLoansView: React.FC<DebtsLoansViewProps> = ({
   };
 
   return (
-    <div className="space-y-3.5 max-w-4xl mx-auto w-full">
-      {/* 1. TOP CARD SUMMARY (Ramping & Responsive, Tidak Melebihi Layar HP) */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 p-3.5 sm:p-5 shadow-2xs">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
-          {/* Sisi Kiri: Posisi Bersih & Nominal Utama */}
-          <div className="min-w-0">
-            <span className="text-xs sm:text-sm font-semibold text-slate-500 dark:text-slate-400 block truncate">
-              Posisi Bersih Keuangan
-            </span>
-            <div className="text-xl sm:text-3xl font-black font-mono tracking-tight mt-0.5 truncate">
-              <span className={netPosition >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}>
-                {netPosition >= 0 ? '+' : ''}{formatRupiah(netPosition)}
-              </span>
-            </div>
-            <span className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 block truncate">
-              {netPosition >= 0 ? 'Piutang melebihi hutang (Surplus)' : 'Kewajiban hutang melebihi piutang'}
-            </span>
-          </div>
-
-          {/* Sisi Kanan: Mini Metrics Hutang vs Piutang & Tombol Tambah */}
-          <div className="pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 dark:border-slate-800 sm:border-l sm:pl-5 flex flex-col sm:flex-row sm:items-center justify-between sm:justify-end gap-3">
-            <div className="grid grid-cols-2 sm:flex sm:items-center gap-3 sm:gap-4 text-xs">
-              <div>
-                <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 font-medium">
-                  <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0"></span>
-                  <span>Hutang Saya</span>
-                </div>
-                <span className="font-mono font-bold text-slate-900 dark:text-white text-xs sm:text-sm block mt-0.5 truncate">
-                  {formatRupiah(totalMyDebtsRemaining)}
-                </span>
-              </div>
-
-              <div>
-                <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 font-medium">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
-                  <span>Piutang Saya</span>
-                </div>
-                <span className="font-mono font-bold text-slate-900 dark:text-white text-xs sm:text-sm block mt-0.5 truncate">
-                  {formatRupiah(totalMyReceivablesRemaining)}
-                </span>
-              </div>
-            </div>
+    <div className="w-full flex-1 min-h-0 flex flex-col overflow-hidden bg-white dark:bg-slate-950">
+      {/* 1. TOP BLUE GRADIENT HERO HEADER (FREEZE / TIDAK BERGERAK - Mockup Hutang_Piutang_Baru_2773371e.jpg) */}
+      <div
+        className="w-full shrink-0 text-white pt-2 sm:pt-3 pb-11 px-4 select-none relative z-10"
+        style={{ background: 'linear-gradient(180deg, #0052b4 0%, #0170d5 50%, #2cbdf8 100%)' }}
+      >
+        <div className="max-w-2xl mx-auto w-full">
+          {/* Header Bar: Logo 3.png (Left) & Settings Gear (Right) */}
+          <div className="flex items-center justify-between py-1 mb-2">
+            <button
+              type="button"
+              onClick={onLogoClick}
+              className="group flex items-center transition-transform active:scale-95 cursor-pointer"
+              title="Ke Beranda Catatin!"
+            >
+              <img
+                src="/Logo 3.png"
+                alt="Catatin!"
+                className="h-8 sm:h-9 w-auto max-w-[160px] object-contain drop-shadow-xs"
+                onError={(e) => {
+                  const target = e.currentTarget;
+                  if (!target.src.includes('%20')) {
+                    target.src = '/Logo%203.png';
+                  }
+                }}
+              />
+            </button>
 
             <button
               type="button"
-              onClick={() => handleOpenAdd(activeType)}
-              className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 text-white text-xs font-semibold rounded-xl transition-colors shadow-xs shrink-0"
+              onClick={onOpenSettings}
+              className="p-1 rounded-xl text-white hover:text-white/80 active:scale-90 transition-transform cursor-pointer"
+              title="Pengaturan & Akun"
+              aria-label="Buka Pengaturan"
             >
-              <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-              <span>{activeType === 'debt' ? 'Catat Hutang' : 'Catat Piutang'}</span>
+              <AppIcon name="settings" className="w-7 h-7 text-white" />
             </button>
+          </div>
+
+          {/* Centered Posisi Bersih Keuangan + Nominal + Subtitle */}
+          <div className="flex flex-col items-center justify-center text-center pt-1 pb-2">
+            <span className="text-xs sm:text-sm font-semibold text-sky-100 tracking-wide">
+              Posisi Bersih Keuangan
+            </span>
+            <div className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight font-sans my-1">
+              {netPosition < 0 ? '-' : netPosition > 0 ? '+' : ''}{formatRupiah(Math.abs(netPosition))}
+            </div>
+            <span className="text-xs sm:text-sm text-sky-200/90 font-medium">
+              {netPosition < 0
+                ? 'Kewajiban hutang melebihi piutang'
+                : netPosition > 0
+                ? 'Hak piutang melebihi hutang'
+                : 'Posisi hutang dan piutang seimbang'}
+            </span>
+          </div>
+
+          {/* Two White Pill Cards Stacked */}
+          <div className="space-y-2 py-1 max-w-sm mx-auto w-full">
+            {/* Pill 1: Hutang Saya */}
+            <div className="bg-white dark:bg-slate-900 rounded-full px-4 py-2 shadow-md flex items-center justify-between border border-white/80 dark:border-slate-800">
+              <div className="min-w-0 pr-2">
+                <span className="text-[11px] font-semibold text-rose-600 dark:text-rose-400 block leading-tight">
+                  Hutang Saya
+                </span>
+                <span className="text-sm sm:text-base font-bold text-slate-900 dark:text-white font-mono block leading-tight">
+                  {formatRupiah(totalMyDebtsRemaining)}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleOpenAdd('debt')}
+                className="bg-rose-500 hover:bg-rose-600 text-white font-bold px-4 py-1.5 rounded-full text-xs inline-flex items-center gap-1 active:scale-95 transition-all cursor-pointer shadow-xs shrink-0"
+              >
+                <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                <span>Hutang</span>
+              </button>
+            </div>
+
+            {/* Pill 2: Piutang Saya */}
+            <div className="bg-white dark:bg-slate-900 rounded-full px-4 py-2 shadow-md flex items-center justify-between border border-white/80 dark:border-slate-800">
+              <div className="min-w-0 pr-2">
+                <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 block leading-tight">
+                  Piutang Saya
+                </span>
+                <span className="text-sm sm:text-base font-bold text-slate-900 dark:text-white font-mono block leading-tight">
+                  {formatRupiah(totalMyReceivablesRemaining)}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleOpenAdd('receivable')}
+                className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold px-4 py-1.5 rounded-full text-xs inline-flex items-center gap-1 active:scale-95 transition-all cursor-pointer shadow-xs shrink-0"
+              >
+                <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                <span>Piutang</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Centered Filter Pills: Semua, Belum Lunas, Lunas */}
+          <div className="flex items-center justify-center pt-2 pb-1">
+            <div className="inline-flex p-1 bg-white/95 dark:bg-slate-800 rounded-full shadow-sm border border-white/60 dark:border-slate-700">
+              <button
+                type="button"
+                onClick={() => setStatusFilter('all')}
+                className={`px-4 py-1 rounded-full text-xs font-bold transition-all ${
+                  statusFilter === 'all'
+                    ? 'bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-white shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 font-semibold'
+                }`}
+              >
+                Semua
+              </button>
+              <button
+                type="button"
+                onClick={() => setStatusFilter('active')}
+                className={`px-4 py-1 rounded-full text-xs font-bold transition-all ${
+                  statusFilter === 'active'
+                    ? 'bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-white shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 font-semibold'
+                }`}
+              >
+                Belum Lunas
+              </button>
+              <button
+                type="button"
+                onClick={() => setStatusFilter('settled')}
+                className={`px-4 py-1 rounded-full text-xs font-bold transition-all ${
+                  statusFilter === 'settled'
+                    ? 'bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-white shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 font-semibold'
+                }`}
+              >
+                Lunas
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* 2. SUBTAB & FILTER PILLS */}
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        {/* Toggle Hutang Saya vs Piutang Saya */}
-        <div className="inline-flex p-1 bg-slate-200/80 dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-inner">
-          <button
-            type="button"
-            onClick={() => setActiveType('debt')}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
-              activeType === 'debt'
-                ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            <ArrowDownRight className="w-3.5 h-3.5 text-rose-500 stroke-[2.5]" />
-            <span>Hutang Saya</span>
-            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-500">
-              {myDebts.length}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveType('receivable')}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
-              activeType === 'receivable'
-                ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            <ArrowUpRight className="w-3.5 h-3.5 text-emerald-500 stroke-[2.5]" />
-            <span>Piutang Saya</span>
-            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-500">
-              {myReceivables.length}
-            </span>
-          </button>
+      {/* 2. DAFTAR HUTANG / PIUTANG (SELEBAR LAYAR, LENGKUNGAN PERSIS REFERENSI DENGAN SHADOW KE ATAS) */}
+      <div className="flex-1 min-h-0 w-full bg-white dark:bg-slate-900 rounded-t-[32px] sm:rounded-t-[36px] -mt-[32px] sm:-mt-[36px] shadow-[0_-8px_20px_rgba(0,0,0,0.12)] dark:shadow-[0_-8px_20px_rgba(0,0,0,0.35)] overflow-y-auto no-scrollbar pb-28 relative z-20">
+        {/* Subtab Segmented Switch: Hutang vs Piutang (Sesuai Mockup Hutang_Piutang_Baru_2773371e.jpg) */}
+        <div className="sticky top-0 z-30 bg-white dark:bg-slate-900 pt-3 pb-2 px-4 sm:px-6 border-b border-slate-100 dark:border-slate-800">
+          <div className="max-w-md mx-auto grid grid-cols-2 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-2xl">
+            <button
+              type="button"
+              onClick={() => setActiveType('debt')}
+              className={`py-2 text-center rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
+                activeType === 'debt'
+                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              Hutang
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveType('receivable')}
+              className={`py-2 text-center rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
+                activeType === 'receivable'
+                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              Piutang
+            </button>
+          </div>
         </div>
 
-        {/* Status Filter */}
-        <div className="inline-flex p-1 bg-slate-100 dark:bg-slate-800/80 rounded-2xl border border-slate-200 dark:border-slate-700">
-          <button
-            type="button"
-            onClick={() => setStatusFilter('all')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-              statusFilter === 'all'
-                ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            Semua
-          </button>
-          <button
-            type="button"
-            onClick={() => setStatusFilter('active')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-              statusFilter === 'active'
-                ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            Belum Lunas
-          </button>
-          <button
-            type="button"
-            onClick={() => setStatusFilter('settled')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-              statusFilter === 'settled'
-                ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            Lunas
-          </button>
-        </div>
-      </div>
-
-      {/* 3. DAFTAR KOTAKAN HUTANG / PIUTANG (Ramping, Tuntas, Pas di Layar HP) */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xs divide-y divide-slate-100 dark:divide-slate-800/80">
+        <div className="w-full max-w-2xl mx-auto px-4 sm:px-6 py-3 space-y-2.5">
         {currentList.length === 0 ? (
           <div className="p-8 text-center">
             <div className="w-12 h-12 mx-auto mb-3 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 dark:text-slate-500">
@@ -362,7 +406,7 @@ export const DebtsLoansView: React.FC<DebtsLoansViewProps> = ({
             return (
               <div
                 key={item.id}
-                className={`p-3 sm:p-3.5 hover:bg-slate-50/70 dark:hover:bg-slate-800/50 transition-colors group space-y-2.5 first:rounded-t-2xl sm:first:rounded-t-3xl last:rounded-b-2xl sm:last:rounded-b-3xl ${
+                className={`p-3.5 bg-white dark:bg-slate-800/90 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-2xs hover:border-slate-200 dark:hover:border-slate-700 transition-colors group space-y-2.5 ${
                   activeMenuId === item.id ? 'relative z-40' : 'relative z-10'
                 }`}
               >
@@ -593,6 +637,7 @@ export const DebtsLoansView: React.FC<DebtsLoansViewProps> = ({
             );
           })
         )}
+        </div>
       </div>
 
       {/* ========================================================================= */}
