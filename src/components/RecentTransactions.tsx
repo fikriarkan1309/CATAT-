@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Trash2,
   Edit2,
@@ -27,6 +27,7 @@ import {
   Tag,
   Receipt,
   X,
+  Check,
 } from 'lucide-react';
 import { Account, Category, Transaction } from '../types/finance';
 import { formatRupiah, formatDateIndo } from '../lib/formatters';
@@ -59,8 +60,23 @@ export const RecentTransactions: React.FC<RecentTransactionsProps> = ({
   const [editAmountStr, setEditAmountStr] = useState('');
   const [editAccountId, setEditAccountId] = useState('');
 
-  // Selected Month filter: 'all' or 'YYYY-MM'
-  const [selectedMonthKey, setSelectedMonthKey] = useState<string>('all');
+  // Selected Month filter: default to current 'YYYY-MM'
+  const [selectedMonthKey, setSelectedMonthKey] = useState<string>(() => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    return `${y}-${m}`;
+  });
+
+  // Selected Date filter: 'YYYY-MM-DD' or null
+  const [selectedDateKey, setSelectedDateKey] = useState<string | null>(null);
+
+  // Date Picker Modal state
+  const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
+  const [tempDate, setTempDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+
+  // Ref for auto-scrolling 12-month pill container to current month (far right)
+  const monthScrollRef = useRef<HTMLDivElement>(null);
 
   // Icon mapping helper
   const getCategoryIcon = (iconName?: string) => {
@@ -119,7 +135,7 @@ export const RecentTransactions: React.FC<RecentTransactionsProps> = ({
     return categories.find((c) => c.id === catId);
   };
 
-  // Month pills options (recent 3 months + current)
+  // 12 Months Pills (Rolling 12 months up to current date)
   const monthPills = useMemo(() => {
     const monthsMap = new Map<string, string>();
     const monthsIndo = [
@@ -127,9 +143,9 @@ export const RecentTransactions: React.FC<RecentTransactionsProps> = ({
       'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
     ];
 
-    // Build last 3 months up to current date
     const now = new Date();
-    for (let i = 2; i >= 0; i--) {
+    // Generate 12 months (11 months back + current month)
+    for (let i = 11; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const y = d.getFullYear();
       const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -138,7 +154,7 @@ export const RecentTransactions: React.FC<RecentTransactionsProps> = ({
       monthsMap.set(key, label);
     }
 
-    // Include any extra month present in transactions
+    // Include any extra month present in transactions if outside rolling 12 months
     transactions.forEach((tx) => {
       const d = new Date(tx.transactionDate);
       if (!isNaN(d.getTime())) {
@@ -151,20 +167,40 @@ export const RecentTransactions: React.FC<RecentTransactionsProps> = ({
       }
     });
 
-    return Array.from(monthsMap.entries()).map(([key, label]) => ({ key, label }));
+    return Array.from(monthsMap.entries())
+      .map(([key, label]) => ({ key, label }))
+      .sort((a, b) => a.key.localeCompare(b.key));
   }, [transactions]);
 
-  // Filtered transactions by selected month
+  // Auto-scroll pill container to far right (latest 3 months) on mount
+  useEffect(() => {
+    if (monthScrollRef.current) {
+      monthScrollRef.current.scrollLeft = monthScrollRef.current.scrollWidth;
+    }
+  }, [monthPills]);
+
+  // Filtered transactions by selected month or specific date
   const filteredTransactions = useMemo(() => {
-    if (selectedMonthKey === 'all') return transactions;
     return transactions.filter((tx) => {
       const d = new Date(tx.transactionDate);
       if (isNaN(d.getTime())) return false;
       const y = d.getFullYear();
       const m = String(d.getMonth() + 1).padStart(2, '0');
-      return `${y}-${m}` === selectedMonthKey;
+      const dayNum = String(d.getDate()).padStart(2, '0');
+      const txMonthKey = `${y}-${m}`;
+      const txDateKey = `${y}-${m}-${dayNum}`;
+
+      if (selectedDateKey) {
+        return txDateKey === selectedDateKey;
+      }
+
+      if (selectedMonthKey && selectedMonthKey !== 'all') {
+        return txMonthKey === selectedMonthKey;
+      }
+
+      return true;
     });
-  }, [transactions, selectedMonthKey]);
+  }, [transactions, selectedMonthKey, selectedDateKey]);
 
   // Summary calculations for filtered transactions
   const { displayIncomeTotal, displayExpenseTotal } = useMemo(() => {
@@ -305,7 +341,7 @@ export const RecentTransactions: React.FC<RecentTransactionsProps> = ({
           {/* Centered Total Pengeluaran */}
           <div className="flex flex-col items-center justify-center text-center pt-1 pb-1">
             <span className="text-xs sm:text-sm font-semibold text-sky-100 tracking-wide">
-              Total Pengeluaran
+              {selectedDateKey ? `Total Pengeluaran (${formatDateIndo(selectedDateKey)})` : 'Total Pengeluaran'}
             </span>
             <div className="text-3xl sm:text-4xl font-extrabold text-white font-mono tracking-tight mt-0.5 drop-shadow-xs">
               {formatRupiah(displayExpenseTotal)}
@@ -340,35 +376,71 @@ export const RecentTransactions: React.FC<RecentTransactionsProps> = ({
             </div>
           </div>
 
-          {/* Horizontal Month Selection Pills */}
-          <div className="flex items-center justify-center gap-2 mt-3 overflow-x-auto no-scrollbar py-1">
-            {monthPills.map((m) => (
-              <button
-                key={m.key}
-                type="button"
-                onClick={() => setSelectedMonthKey(selectedMonthKey === m.key ? 'all' : m.key)}
-                className={`px-4 py-1.5 rounded-2xl text-xs sm:text-sm font-bold transition-all shrink-0 cursor-pointer ${
-                  selectedMonthKey === m.key
-                    ? 'bg-white text-[#0052b4] border-2 border-sky-400 shadow-xs'
-                    : 'bg-white/20 text-white hover:bg-white/30 backdrop-blur-xs'
-                }`}
-              >
-                {m.label}
-              </button>
-            ))}
+          {/* 12-Month Scrollable Pills Bar (Shows 3 at a time, scroll/swipe left to right) */}
+          <div className="flex items-center gap-2 mt-3 max-w-md mx-auto w-full">
+            <div
+              ref={monthScrollRef}
+              className="flex-1 flex items-center gap-2 overflow-x-auto no-scrollbar scroll-smooth snap-x py-1"
+            >
+              {monthPills.map((m) => {
+                const isSelected = selectedMonthKey === m.key && !selectedDateKey;
+                return (
+                  <button
+                    key={m.key}
+                    type="button"
+                    onClick={() => {
+                      setSelectedDateKey(null);
+                      setSelectedMonthKey(m.key);
+                    }}
+                    className={`shrink-0 w-[calc((100%-16px)/3)] text-center py-1.5 px-2 rounded-2xl text-xs sm:text-sm font-bold transition-all snap-start cursor-pointer truncate ${
+                      isSelected
+                        ? 'bg-white text-[#0052b4] border-2 border-sky-400 shadow-md font-extrabold'
+                        : 'bg-white/20 text-white hover:bg-white/30 backdrop-blur-xs'
+                    }`}
+                  >
+                    {m.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Calendar Date Filter Button */}
             <button
               type="button"
-              onClick={() => setSelectedMonthKey('all')}
-              className={`p-2 rounded-2xl transition-all shrink-0 cursor-pointer ${
-                selectedMonthKey === 'all'
-                  ? 'bg-white text-[#0052b4] border-2 border-sky-400 shadow-xs'
+              onClick={() => {
+                setTempDate(selectedDateKey || new Date().toISOString().split('T')[0]);
+                setIsDatePickerOpen(true);
+              }}
+              className={`p-2.5 rounded-2xl transition-all shrink-0 cursor-pointer relative ${
+                selectedDateKey
+                  ? 'bg-amber-400 text-slate-900 border-2 border-white shadow-md font-bold'
                   : 'bg-white/20 text-white hover:bg-white/30 backdrop-blur-xs'
               }`}
-              title="Tampilkan Semua Transaksi"
+              title="Pilih Tanggal Transaksi Spesifik"
             >
-              <Calendar className="w-4 h-4" />
+              <Calendar className="w-5 h-5" />
+              {selectedDateKey && (
+                <span className="absolute -top-1 -right-1 w-3 h-3 bg-rose-500 rounded-full border-2 border-white" />
+              )}
             </button>
           </div>
+
+          {/* Active Date Filter Indicator Chip */}
+          {selectedDateKey && (
+            <div className="flex items-center justify-between bg-amber-400 text-slate-950 px-3.5 py-1.5 rounded-xl text-xs font-bold mt-2 max-w-md mx-auto shadow-xs border border-white/40">
+              <span className="flex items-center gap-1.5 truncate">
+                <Calendar className="w-3.5 h-3.5 shrink-0" />
+                <span>Filter Tanggal: {formatDateIndo(selectedDateKey)}</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setSelectedDateKey(null)}
+                className="ml-2 bg-slate-900/10 hover:bg-slate-900/20 px-2 py-0.5 rounded-md text-[10px] font-black underline cursor-pointer shrink-0"
+              >
+                Hapus ✕
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -763,6 +835,98 @@ export const RecentTransactions: React.FC<RecentTransactionsProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* 5. MODAL PICKER TANGGAL (FILTER KALENDER) */}
+      {isDatePickerOpen && (
+        <div
+          onClick={() => setIsDatePickerOpen(false)}
+          className="fixed inset-0 z-50 bg-slate-900/60 dark:bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-sm bg-white dark:bg-slate-900 rounded-3xl p-5 sm:p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4"
+          >
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="flex items-center gap-2 text-slate-900 dark:text-white font-bold text-sm sm:text-base">
+                <Calendar className="w-5 h-5 text-sky-500" />
+                <span>Pilih Tanggal Transaksi</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsDatePickerOpen(false)}
+                className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-slate-700 flex items-center justify-center cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5 block">
+                Pilih Tanggal Spesifik
+              </label>
+              <input
+                type="date"
+                value={tempDate}
+                onChange={(e) => setTempDate(e.target.value)}
+                className="w-full p-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white font-bold text-sm focus:ring-2 focus:ring-sky-500 focus:outline-none"
+              />
+            </div>
+
+            {/* Tombol Pintas Tanggal */}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setTempDate(new Date().toISOString().split('T')[0])}
+                className="flex-1 py-2 px-2 bg-sky-50 dark:bg-sky-950/50 text-sky-600 dark:text-sky-400 border border-sky-200 dark:border-sky-800 rounded-xl text-xs font-bold cursor-pointer hover:bg-sky-100 transition-colors"
+              >
+                Hari Ini
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const d = new Date();
+                  d.setDate(d.getDate() - 1);
+                  setTempDate(d.toISOString().split('T')[0]);
+                }}
+                className="flex-1 py-2 px-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold cursor-pointer hover:bg-slate-200 transition-colors"
+              >
+                Kemarin
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+              {selectedDateKey && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedDateKey(null);
+                    setIsDatePickerOpen(false);
+                  }}
+                  className="py-2.5 px-3 bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 rounded-2xl text-xs font-bold hover:bg-rose-100 cursor-pointer"
+                >
+                  Reset
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  if (tempDate) {
+                    setSelectedDateKey(tempDate);
+                    const parts = tempDate.split('-');
+                    if (parts.length >= 2) {
+                      setSelectedMonthKey(`${parts[0]}-${parts[1]}`);
+                    }
+                  }
+                  setIsDatePickerOpen(false);
+                }}
+                className="flex-1 py-2.5 px-4 bg-sky-500 hover:bg-sky-600 text-white rounded-2xl text-xs font-bold shadow-xs cursor-pointer"
+              >
+                Terapkan Filter
+              </button>
+            </div>
           </div>
         </div>
       )}
