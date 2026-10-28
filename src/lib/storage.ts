@@ -1809,6 +1809,7 @@ class OfflineStorageEngine {
     }
     const now = new Date().toISOString();
     bill.lastPaidDate = now;
+    bill.lastPaidAccountId = accountId;
     bill.updatedAt = now;
 
     // Gunakan ID deterministik berdasarkan billId dan bulan agar sinkronisasi antar perangkat tidak menghasilkan duplikasi
@@ -1976,7 +1977,7 @@ class OfflineStorageEngine {
 
         if (matchingTxns.length === 0) {
           // Kasus HP 2: Tagihan lunas tapi transaksi belum ada di device ini
-          const targetAccountId = bill.accountId || this.state.accounts[0]?.id || '';
+          const targetAccountId = bill.lastPaidAccountId || bill.accountId || this.state.accounts[0]?.id || '';
           const txnId = `txn-bill-${bill.id}-${month}`;
           const paymentDate =
             bill.lastPaidDate && bill.lastPaidDate.startsWith(month)
@@ -2712,6 +2713,7 @@ class OfflineStorageEngine {
           notes: r.notes,
           paidMonths: r.paid_months || [],
           lastPaidDate: r.last_paid_date,
+          lastPaidAccountId: r.last_paid_account_id || r.lastPaidAccountId,
           createdAt: r.created_at,
           updatedAt: r.updated_at,
           isDeleted: Boolean(r.is_deleted),
@@ -3152,6 +3154,7 @@ class OfflineStorageEngine {
         notes: newRecord.notes,
         paidMonths: newRecord.paid_months || [],
         lastPaidDate: newRecord.last_paid_date,
+        lastPaidAccountId: newRecord.last_paid_account_id || newRecord.lastPaidAccountId,
         createdAt: newRecord.created_at,
         updatedAt: newRecord.updated_at,
         isDeleted: Boolean(newRecord.is_deleted),
@@ -3228,255 +3231,253 @@ class OfflineStorageEngine {
       return 0;
     }
 
-    const pendingItems = this.state.syncQueue.filter((q) => q.status === 'pending');
-    if (pendingItems.length === 0) {
-      return 0;
-    }
-
     const supabase = getSupabaseClient();
-    if (!supabase || !isSupabaseConfigured()) {
-      return 0;
-    }
+    const pendingItems = this.state.syncQueue.filter((q) => q.status === 'pending');
 
     this.isSyncing = true;
     this.notify();
 
     const syncingIds = new Set(pendingItems.map((i) => i.id));
-    this.state.syncQueue = this.state.syncQueue.map((item) =>
-      syncingIds.has(item.id) ? { ...item, status: 'syncing' } : item
-    );
-    this.persist();
+    if (pendingItems.length > 0) {
+      this.state.syncQueue = this.state.syncQueue.map((item) =>
+        syncingIds.has(item.id) ? { ...item, status: 'syncing' } : item
+      );
+      this.persist();
+    }
 
     const successfullySyncedIds = new Set<string>();
 
     try {
-      let userId: string | undefined;
-      const { data: sessionData } = await supabase.auth.getSession();
-      userId = sessionData?.session?.user?.id;
-      if (!userId) {
-        const { data: userData } = await supabase.auth.getUser();
-        userId = userData?.user?.id;
-      }
+      if (supabase && isSupabaseConfigured()) {
+        let userId: string | undefined;
+        const { data: sessionData } = await supabase.auth.getSession();
+        userId = sessionData?.session?.user?.id;
+        if (!userId) {
+          const { data: userData } = await supabase.auth.getUser();
+          userId = userData?.user?.id;
+        }
 
-      if (!userId) {
-        console.warn('Sync aborted: No authenticated user ID found.');
-        this.state.syncQueue = this.state.syncQueue.map((item) =>
-          syncingIds.has(item.id) ? { ...item, status: 'pending' } : item
-        );
-        this.persist();
-        return 0;
-      }
+        if (userId) {
+          // 1. Push pending items to Supabase
+          if (pendingItems.length > 0) {
+            for (const item of pendingItems) {
+              try {
+                let error: any = null;
 
-      for (const item of pendingItems) {
-        try {
-          let error: any = null;
+                if (item.entityTable === 'transactions') {
+                  if (item.operation === 'INSERT' || item.operation === 'UPDATE') {
+                    const tx = item.payload;
+                    let validCatId = tx.categoryId;
+                    if (tx.type === 'transfer' || !validCatId || validCatId === 'transfer') {
+                      validCatId =
+                        this.state.categories.find(
+                          (c) => c.id === validCatId || c.id === 'cat-transfer' || c.name.toLowerCase().includes('transfer')
+                        )?.id ||
+                        this.state.categories[0]?.id ||
+                        'cat-transfer';
+                    }
+                    const res = await supabase.from('transactions').upsert({
+                      id: tx.id,
+                      user_id: userId,
+                      workspace_id: tx.workspaceId || 'ws-default',
+                      account_id: tx.accountId,
+                      category_id: validCatId,
+                      amount: tx.amount,
+                      type: tx.type,
+                      target_account_id: tx.targetAccountId || null,
+                      party_from: tx.partyFrom || null,
+                      party_to: tx.partyTo || null,
+                      tags: tx.tags || [],
+                      notes: tx.notes || null,
+                      transaction_date: tx.transactionDate,
+                      is_guilt_free: Boolean(tx.isGuiltFree),
+                      guilt_free_owner: tx.guiltFreeOwner || null,
+                      updated_at: tx.updatedAt || new Date().toISOString(),
+                      is_deleted: Boolean(tx.isDeleted),
+                    });
+                    error = res.error;
+                  } else if (item.operation === 'DELETE') {
+                    const res = await supabase.from('transactions').delete().eq('id', item.entityId);
+                    error = res.error;
+                  }
+                } else if (item.entityTable === 'accounts') {
+                  if (item.operation === 'INSERT' || item.operation === 'UPDATE') {
+                    const acc = item.payload;
+                    const res = await supabase.from('accounts').upsert({
+                      id: acc.id,
+                      user_id: userId,
+                      workspace_id: acc.workspaceId || 'ws-default',
+                      name: acc.name,
+                      type: acc.type,
+                      currency: acc.currency || 'IDR',
+                      account_number: acc.accountNumber || '',
+                      balance: acc.balance,
+                      initial_balance: acc.initialBalance,
+                      color: acc.color,
+                      is_archived: Boolean(acc.isArchived),
+                      is_deleted: Boolean(acc.isDeleted),
+                      updated_at: acc.updatedAt || new Date().toISOString(),
+                    });
+                    error = res.error;
+                  } else if (item.operation === 'DELETE') {
+                    const res = await supabase.from('accounts').delete().eq('id', item.entityId);
+                    error = res.error;
+                  }
+                } else if (item.entityTable === 'categories') {
+                  if (item.operation === 'INSERT' || item.operation === 'UPDATE') {
+                    const cat = item.payload;
+                    const res = await supabase.from('categories').upsert({
+                      id: cat.id,
+                      user_id: userId,
+                      workspace_id: cat.workspaceId || 'ws-default',
+                      parent_id: cat.parentId || null,
+                      name: cat.name,
+                      icon: cat.icon,
+                      color: cat.color,
+                      type: cat.type,
+                      is_system: Boolean(cat.isSystem),
+                      is_deleted: Boolean(cat.isDeleted),
+                    });
+                    error = res.error;
+                  } else if (item.operation === 'DELETE') {
+                    const res = await supabase.from('categories').delete().eq('id', item.entityId);
+                    error = res.error;
+                  }
+                } else if (item.entityTable === 'budgets') {
+                  if (item.operation === 'INSERT' || item.operation === 'UPDATE') {
+                    const b = item.payload;
+                    const res = await supabase.from('budgets').upsert({
+                      id: b.id,
+                      user_id: userId,
+                      workspace_id: b.workspaceId || 'ws-default',
+                      category_id: b.categoryId,
+                      account_id: b.accountId || 'all',
+                      duration: b.duration || '1_month',
+                      start_date: b.startDate,
+                      end_date: b.endDate,
+                      period_month: b.periodMonth || null,
+                      limit_amount: b.limitAmount,
+                      rollover_amount: b.rolloverAmount || 0,
+                      rollover_action: b.rolloverAction || 'rollover',
+                      updated_at: b.updatedAt || new Date().toISOString(),
+                      is_deleted: Boolean(b.isDeleted),
+                    });
+                    error = res.error;
+                  } else if (item.operation === 'DELETE') {
+                    const res = await supabase.from('budgets').delete().eq('id', item.entityId);
+                    error = res.error;
+                  }
+                } else if (item.entityTable === 'goals') {
+                  if (item.operation === 'INSERT' || item.operation === 'UPDATE') {
+                    const g = item.payload;
+                    const res = await supabase.from('goals').upsert({
+                      id: g.id,
+                      user_id: userId,
+                      workspace_id: g.workspaceId || 'ws-default',
+                      name: g.name,
+                      target_amount: g.targetAmount,
+                      current_amount: g.currentAmount,
+                      target_date: g.targetDate,
+                      icon: g.icon,
+                      color: g.color || '#3B82F6',
+                      notes: g.notes || null,
+                      is_completed: Boolean(g.isCompleted),
+                      updated_at: g.updatedAt || new Date().toISOString(),
+                    });
+                    error = res.error;
+                  } else if (item.operation === 'DELETE') {
+                    const res = await supabase.from('goals').delete().eq('id', item.entityId);
+                    error = res.error;
+                  }
+                } else if (item.entityTable === 'bills') {
+                  if (item.operation === 'INSERT' || item.operation === 'UPDATE') {
+                    const bill = item.payload;
+                    const res = await supabase.from('bills').upsert({
+                      id: bill.id,
+                      user_id: userId,
+                      workspace_id: bill.workspaceId || 'ws-default',
+                      name: bill.name,
+                      amount: bill.amount,
+                      category_id: bill.categoryId,
+                      account_id: bill.accountId || null,
+                      due_day: bill.dueDay,
+                      frequency: bill.frequency || 'monthly',
+                      notes: bill.notes || null,
+                      paid_months: bill.paidMonths || [],
+                      last_paid_date: bill.lastPaidDate || null,
+                      last_paid_account_id: bill.lastPaidAccountId || null,
+                      created_at: bill.createdAt || new Date().toISOString(),
+                      updated_at: bill.updatedAt || new Date().toISOString(),
+                      is_deleted: Boolean(bill.isDeleted),
+                    });
+                    error = res.error;
+                  } else if (item.operation === 'DELETE') {
+                    const res = await supabase.from('bills').delete().eq('id', item.entityId);
+                    error = res.error;
+                  }
+                } else if (item.entityTable === 'debts') {
+                  if (item.operation === 'INSERT' || item.operation === 'UPDATE') {
+                    const d = item.payload;
+                    const res = await supabase.from('debts').upsert({
+                      id: d.id,
+                      user_id: userId,
+                      workspace_id: d.workspaceId || 'ws-default',
+                      type: d.type,
+                      person_name: d.personName,
+                      phone: d.phone || null,
+                      total_amount: d.totalAmount,
+                      paid_amount: d.paidAmount || 0,
+                      start_date: d.startDate,
+                      due_date: d.dueDate || null,
+                      notes: d.notes || null,
+                      status: d.status || 'active',
+                      payments: d.payments || [],
+                      created_at: d.createdAt || new Date().toISOString(),
+                      updated_at: d.updatedAt || new Date().toISOString(),
+                      is_deleted: Boolean(d.isDeleted),
+                    });
+                    error = res.error;
+                  } else if (item.operation === 'DELETE') {
+                    const res = await supabase.from('debts').delete().eq('id', item.entityId);
+                    error = res.error;
+                  }
+                }
 
-          if (item.entityTable === 'transactions') {
-            if (item.operation === 'INSERT' || item.operation === 'UPDATE') {
-              const tx = item.payload;
-              // Pastikan category_id valid dan tidak menyebabkan kegagalan foreign key / UUID di Supabase
-              let validCatId = tx.categoryId;
-              if (tx.type === 'transfer' || !validCatId || validCatId === 'transfer') {
-                validCatId =
-                  this.state.categories.find(
-                    (c) => c.id === validCatId || c.id === 'cat-transfer' || c.name.toLowerCase().includes('transfer')
-                  )?.id ||
-                  this.state.categories[0]?.id ||
-                  'cat-transfer';
+                if (!error) {
+                  successfullySyncedIds.add(item.id);
+                } else {
+                  console.warn(`Item ${item.id} sync failed:`, error);
+                }
+              } catch (syncErr) {
+                console.warn(`Item ${item.id} sync exception:`, syncErr);
               }
-              const res = await supabase.from('transactions').upsert({
-                id: tx.id,
-                user_id: userId,
-                workspace_id: tx.workspaceId || 'ws-default',
-                account_id: tx.accountId,
-                category_id: validCatId,
-                amount: tx.amount,
-                type: tx.type,
-                target_account_id: tx.targetAccountId || null,
-                party_from: tx.partyFrom || null,
-                party_to: tx.partyTo || null,
-                tags: tx.tags || [],
-                notes: tx.notes || null,
-                transaction_date: tx.transactionDate,
-                is_guilt_free: Boolean(tx.isGuiltFree),
-                guilt_free_owner: tx.guiltFreeOwner || null,
-                updated_at: tx.updatedAt || new Date().toISOString(),
-                is_deleted: Boolean(tx.isDeleted),
-              });
-              error = res.error;
-            } else if (item.operation === 'DELETE') {
-              const res = await supabase.from('transactions').delete().eq('id', item.entityId);
-              error = res.error;
             }
-          } else if (item.entityTable === 'accounts') {
-            if (item.operation === 'INSERT' || item.operation === 'UPDATE') {
-              const acc = item.payload;
-              const res = await supabase.from('accounts').upsert({
-                id: acc.id,
-                user_id: userId,
-                workspace_id: acc.workspaceId || 'ws-default',
-                name: acc.name,
-                type: acc.type,
-                currency: acc.currency || 'IDR',
-                account_number: acc.accountNumber || '',
-                balance: acc.balance,
-                initial_balance: acc.initialBalance,
-                color: acc.color,
-                is_archived: Boolean(acc.isArchived),
-                is_deleted: Boolean(acc.isDeleted),
-                updated_at: acc.updatedAt || new Date().toISOString(),
-              });
-              error = res.error;
-            } else if (item.operation === 'DELETE') {
-              const res = await supabase.from('accounts').delete().eq('id', item.entityId);
-              error = res.error;
-            }
-          } else if (item.entityTable === 'categories') {
-            if (item.operation === 'INSERT' || item.operation === 'UPDATE') {
-              const cat = item.payload;
-              const res = await supabase.from('categories').upsert({
-                id: cat.id,
-                user_id: userId,
-                workspace_id: cat.workspaceId || 'ws-default',
-                parent_id: cat.parentId || null,
-                name: cat.name,
-                icon: cat.icon,
-                color: cat.color,
-                type: cat.type,
-                is_system: Boolean(cat.isSystem),
-                is_deleted: Boolean(cat.isDeleted),
-              });
-              error = res.error;
-            } else if (item.operation === 'DELETE') {
-              const res = await supabase.from('categories').delete().eq('id', item.entityId);
-              error = res.error;
-            }
-          } else if (item.entityTable === 'budgets') {
-            if (item.operation === 'INSERT' || item.operation === 'UPDATE') {
-              const b = item.payload;
-              const res = await supabase.from('budgets').upsert({
-                id: b.id,
-                user_id: userId,
-                workspace_id: b.workspaceId || 'ws-default',
-                category_id: b.categoryId,
-                account_id: b.accountId || 'all',
-                duration: b.duration || '1_month',
-                start_date: b.startDate,
-                end_date: b.endDate,
-                period_month: b.periodMonth || null,
-                limit_amount: b.limitAmount,
-                rollover_amount: b.rolloverAmount || 0,
-                rollover_action: b.rolloverAction || 'rollover',
-                updated_at: b.updatedAt || new Date().toISOString(),
-                is_deleted: Boolean(b.isDeleted),
-              });
-              error = res.error;
-            } else if (item.operation === 'DELETE') {
-              const res = await supabase.from('budgets').delete().eq('id', item.entityId);
-              error = res.error;
-            }
-          } else if (item.entityTable === 'goals') {
-            if (item.operation === 'INSERT' || item.operation === 'UPDATE') {
-              const g = item.payload;
-              const res = await supabase.from('goals').upsert({
-                id: g.id,
-                user_id: userId,
-                workspace_id: g.workspaceId || 'ws-default',
-                name: g.name,
-                target_amount: g.targetAmount,
-                current_amount: g.currentAmount,
-                target_date: g.targetDate,
-                icon: g.icon,
-                color: g.color || '#3B82F6',
-                notes: g.notes || null,
-                is_completed: Boolean(g.isCompleted),
-                updated_at: g.updatedAt || new Date().toISOString(),
-              });
-              error = res.error;
-            } else if (item.operation === 'DELETE') {
-              const res = await supabase.from('goals').delete().eq('id', item.entityId);
-              error = res.error;
-            }
-          } else if (item.entityTable === 'bills') {
-            if (item.operation === 'INSERT' || item.operation === 'UPDATE') {
-              const bill = item.payload;
-              const res = await supabase.from('bills').upsert({
-                id: bill.id,
-                user_id: userId,
-                workspace_id: bill.workspaceId || 'ws-default',
-                name: bill.name,
-                amount: bill.amount,
-                category_id: bill.categoryId,
-                account_id: bill.accountId || null,
-                due_day: bill.dueDay,
-                frequency: bill.frequency || 'monthly',
-                notes: bill.notes || null,
-                paid_months: bill.paidMonths || [],
-                last_paid_date: bill.lastPaidDate || null,
-                created_at: bill.createdAt || new Date().toISOString(),
-                updated_at: bill.updatedAt || new Date().toISOString(),
-                is_deleted: Boolean(bill.isDeleted),
-              });
-              error = res.error;
-            } else if (item.operation === 'DELETE') {
-              const res = await supabase.from('bills').delete().eq('id', item.entityId);
-              error = res.error;
-            }
-          } else if (item.entityTable === 'debts') {
-            if (item.operation === 'INSERT' || item.operation === 'UPDATE') {
-              const d = item.payload;
-              const res = await supabase.from('debts').upsert({
-                id: d.id,
-                user_id: userId,
-                workspace_id: d.workspaceId || 'ws-default',
-                type: d.type,
-                person_name: d.personName,
-                phone: d.phone || null,
-                total_amount: d.totalAmount,
-                paid_amount: d.paidAmount || 0,
-                start_date: d.startDate,
-                due_date: d.dueDate || null,
-                notes: d.notes || null,
-                status: d.status || 'active',
-                payments: d.payments || [],
-                created_at: d.createdAt || new Date().toISOString(),
-                updated_at: d.updatedAt || new Date().toISOString(),
-                is_deleted: Boolean(d.isDeleted),
-              });
-              error = res.error;
-            } else if (item.operation === 'DELETE') {
-              const res = await supabase.from('debts').delete().eq('id', item.entityId);
-              error = res.error;
-            }
+
+            this.state.syncQueue = this.state.syncQueue.map((item) => {
+              if (syncingIds.has(item.id)) {
+                return successfullySyncedIds.has(item.id)
+                  ? { ...item, status: 'synced' }
+                  : { ...item, status: 'pending', retryCount: item.retryCount + 1 };
+              }
+              return item;
+            });
+            this.persist();
           }
 
-          if (!error) {
-            successfullySyncedIds.add(item.id);
-          } else {
-            console.warn(`Item ${item.id} sync failed:`, error);
-          }
-        } catch (syncErr) {
-          console.warn(`Item ${item.id} sync exception:`, syncErr);
+          // 2. Tarik data terbaru dari Supabase agar lokal selalu up-to-date
+          await this.pullFromSupabase(supabase, userId);
         }
       }
 
-      this.state.syncQueue = this.state.syncQueue.map((item) => {
-        if (syncingIds.has(item.id)) {
-          return successfullySyncedIds.has(item.id)
-            ? { ...item, status: 'synced' }
-            : { ...item, status: 'pending', retryCount: item.retryCount + 1 };
-        }
-        return item;
-      });
-
-      this.persist();
       return successfullySyncedIds.size;
     } catch (err) {
       console.error('Trigger sync error:', err);
-      this.state.syncQueue = this.state.syncQueue.map((item) =>
-        syncingIds.has(item.id) ? { ...item, status: 'pending', retryCount: item.retryCount + 1 } : item
-      );
-      this.persist();
+      if (pendingItems.length > 0) {
+        this.state.syncQueue = this.state.syncQueue.map((item) =>
+          syncingIds.has(item.id) ? { ...item, status: 'pending', retryCount: item.retryCount + 1 } : item
+        );
+        this.persist();
+      }
       return 0;
     } finally {
       this.isSyncing = false;

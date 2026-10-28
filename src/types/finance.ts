@@ -113,6 +113,7 @@ export interface RecurringBill {
   notes?: string;
   paidMonths: string[]; // List of 'YYYY-MM' strings for paid status
   lastPaidDate?: string;
+  lastPaidAccountId?: string;
   createdAt: string;
   updatedAt: string;
   isDeleted?: boolean;

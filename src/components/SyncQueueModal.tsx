@@ -79,8 +79,8 @@ export const SyncQueueModal: React.FC<SyncQueueModalProps> = ({
 
             <button
               onClick={onTriggerSync}
-              disabled={isSyncing || !isOnline || pendingCount === 0}
-              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium rounded-lg transition-colors flex items-center gap-1.5 text-xs shadow-xs"
+              disabled={isSyncing || !isOnline}
+              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium rounded-lg transition-colors flex items-center gap-1.5 text-xs shadow-xs cursor-pointer disabled:cursor-not-allowed"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
               <span>{isSyncing ? 'Menyinkronkan...' : 'Sinkronkan Sekarang'}</span>

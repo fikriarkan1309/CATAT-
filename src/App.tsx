@@ -217,6 +217,114 @@ export default function App() {
     );
   }
 
+  // --- MOBILE BACK BUTTON & HISTORY NAVIGATION CONTROLLER ---
+  const LEVEL_2_TABS: AppNavTab[] = ['summary', 'accounts', 'more'];
+  const LEVEL_3_TABS: AppNavTab[] = [
+    'comparison',
+    'savings',
+    'budgets',
+    'bills',
+    'debts',
+    'transactions',
+    'categories',
+  ];
+
+  // Initialize initial history entry
+  React.useEffect(() => {
+    if (isAuthenticated) {
+      if (!window.history.state || !window.history.state.tab) {
+        window.history.replaceState({ tab: 'home', level: 1 }, '', '#home');
+      }
+    }
+  }, [isAuthenticated]);
+
+  // Handle programmatic tab switches with history push
+  const handleSelectTab = (targetTab: AppNavTab) => {
+    if (targetTab === currentTab) return;
+
+    if (targetTab === 'home') {
+      window.history.pushState({ tab: 'home', level: 1 }, '', '#home');
+      setCurrentTab('home');
+    } else if (LEVEL_2_TABS.includes(targetTab)) {
+      window.history.pushState({ tab: targetTab, level: 2 }, '', `#${targetTab}`);
+      setCurrentTab(targetTab);
+    } else if (LEVEL_3_TABS.includes(targetTab)) {
+      if (window.history.state?.tab !== 'more') {
+        window.history.pushState({ tab: 'more', level: 2 }, '', '#more');
+      }
+      window.history.pushState({ tab: targetTab, level: 3 }, '', `#${targetTab}`);
+      setCurrentTab(targetTab);
+    } else {
+      window.history.pushState({ tab: targetTab, level: 2 }, '', `#${targetTab}`);
+      setCurrentTab(targetTab);
+    }
+  };
+
+  // Popstate Listener for Mobile Back Button / Edge Swipe
+  React.useEffect(() => {
+    const handlePopState = (e: PopStateEvent) => {
+      // 1. If any modal/sheet is open, close modal first and retain current tab history
+      const isModalOpen =
+        isQuickAddSheetOpen ||
+        isTxnModalOpen ||
+        editingTransaction !== null ||
+        isAccountModalOpen ||
+        isBudgetModalOpen ||
+        isSettingsMenuOpen ||
+        isDataModalOpen ||
+        isUserAccountModalOpen ||
+        isSyncModalOpen;
+
+      if (isModalOpen) {
+        setIsQuickAddSheetOpen(false);
+        setIsTxnModalOpen(false);
+        setEditingTransaction(null);
+        setIsAccountModalOpen(false);
+        setIsBudgetModalOpen(false);
+        setIsSettingsMenuOpen(false);
+        setIsDataModalOpen(false);
+        setIsUserAccountModalOpen(false);
+        setIsSyncModalOpen(false);
+        window.history.pushState(
+          { tab: currentTab, level: LEVEL_3_TABS.includes(currentTab) ? 3 : LEVEL_2_TABS.includes(currentTab) ? 2 : 1 },
+          '',
+          `#${currentTab}`
+        );
+        return;
+      }
+
+      // 2. Page Navigation back based on state or level fallback
+      const stateTab = e.state?.tab as AppNavTab | undefined;
+
+      if (stateTab) {
+        setCurrentTab(stateTab);
+      } else {
+        // Popped past initial entry
+        if (LEVEL_3_TABS.includes(currentTab)) {
+          setCurrentTab('more');
+          window.history.pushState({ tab: 'more', level: 2 }, '', '#more');
+        } else if (LEVEL_2_TABS.includes(currentTab)) {
+          setCurrentTab('home');
+          window.history.pushState({ tab: 'home', level: 1 }, '', '#home');
+        }
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [
+    currentTab,
+    isQuickAddSheetOpen,
+    isTxnModalOpen,
+    editingTransaction,
+    isAccountModalOpen,
+    isBudgetModalOpen,
+    isSettingsMenuOpen,
+    isDataModalOpen,
+    isUserAccountModalOpen,
+    isSyncModalOpen,
+  ]);
+
   // Determine if on a sub-view originating from 'Lainnya'
   const isSubViewFromMore = [
     'comparison',
@@ -232,7 +340,7 @@ export default function App() {
     <div className="min-h-screen bg-white dark:bg-slate-950 flex flex-col font-sans text-slate-900 dark:text-slate-100 overflow-x-clip transition-colors">
       {/* Top Header Navigation (Logo 2.png + Settings Gear) */}
       <AppHeader
-        onLogoClick={() => setCurrentTab('home')}
+        onLogoClick={() => handleSelectTab('home')}
         onOpenSettings={() => setIsSettingsMenuOpen(true)}
         isOnline={isOnline}
         isSyncing={isSyncing}
@@ -260,8 +368,8 @@ export default function App() {
           <div className="max-w-lg mx-auto sm:max-w-xl md:max-w-2xl w-full px-4 pt-3 flex items-center justify-between">
             <button
               type="button"
-              onClick={() => setCurrentTab('more')}
-              className="flex items-center gap-1.5 text-xs font-bold text-sky-600 dark:text-sky-400 hover:text-sky-700 bg-sky-50 dark:bg-slate-900 px-3 py-1.5 rounded-xl border border-sky-100 dark:border-slate-800 transition-colors shadow-2xs"
+              onClick={() => handleSelectTab('more')}
+              className="flex items-center gap-1.5 text-xs font-bold text-sky-600 dark:text-sky-400 hover:text-sky-700 bg-sky-50 dark:bg-slate-900 px-3 py-1.5 rounded-xl border border-sky-100 dark:border-slate-800 transition-colors shadow-2xs cursor-pointer"
             >
               <ArrowLeft className="w-4 h-4" />
               <span>Kembali ke Lainnya</span>
@@ -281,7 +389,7 @@ export default function App() {
             goals={goals}
             bills={bills}
             debts={debts}
-            onNavigateTab={setCurrentTab}
+            onNavigateTab={handleSelectTab}
             onAddIncome={handleOpenIncome}
             onAddExpense={handleOpenExpense}
             onTransfer={handleOpenTransfer}
@@ -326,7 +434,7 @@ export default function App() {
         {/* TAB 4: LAINNYA (Grid 6 Menu Mockup Lainnya_516d7998.jpg) */}
         {/* ========================================================================= */}
         {currentTab === 'more' && (
-          <LainnyaView onSelectMenu={setCurrentTab} />
+          <LainnyaView onSelectMenu={handleSelectTab} />
         )}
 
         {/* ========================================================================= */}
@@ -337,7 +445,7 @@ export default function App() {
             transactions={transactions}
             categories={categories}
             accounts={accounts}
-            onBack={() => setCurrentTab('more')}
+            onBack={() => handleSelectTab('more')}
           />
         )}
 
@@ -449,7 +557,7 @@ export default function App() {
       {/* ========================================================================= */}
       <BottomNav
         currentTab={currentTab}
-        onSelectTab={setCurrentTab}
+        onSelectTab={handleSelectTab}
         onOpenQuickAdd={() => setIsQuickAddSheetOpen(true)}
       />
 
@@ -479,7 +587,7 @@ export default function App() {
         defaultAccountId={selectedAccountIdForTxn}
         onOpenManageCategories={() => {
           setIsTxnModalOpen(false);
-          setCurrentTab('categories');
+          handleSelectTab('categories');
         }}
         onSave={addTransaction}
       />
@@ -576,7 +684,7 @@ export default function App() {
         isOpen={isSettingsMenuOpen}
         onClose={() => setIsSettingsMenuOpen(false)}
         onOpenDataModal={() => setIsDataModalOpen(true)}
-        onOpenCategories={() => setCurrentTab('categories')}
+        onOpenCategories={() => handleSelectTab('categories')}
         onOpenAccountModal={() => setIsUserAccountModalOpen(true)}
         theme={theme}
         onToggleTheme={toggleTheme}
