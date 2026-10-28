@@ -376,8 +376,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   const maxExpenseDay = Math.max(...days.map((d) => d.total), 300000);
 
-  // 3. Recent Transactions (Top 30 latest for scrollable view)
-  const recentTxns = transactions.slice(0, 30);
+  // 3. Recent Transactions (Top 30 latest for scrollable view, always newest first)
+  const recentTxns = [...transactions]
+    .sort((a, b) => {
+      const timeA = new Date(a.transactionDate).getTime();
+      const timeB = new Date(b.transactionDate).getTime();
+      if (timeB !== timeA) return timeB - timeA;
+      const createdA = new Date(a.clientCreatedAt || a.updatedAt || 0).getTime();
+      const createdB = new Date(b.clientCreatedAt || b.updatedAt || 0).getTime();
+      if (createdB !== createdA) return createdB - createdA;
+      return b.id.localeCompare(a.id);
+    })
+    .slice(0, 30);
 
   // Category map
   const categoryMap = new Map(categories.map((c) => [c.id, c]));

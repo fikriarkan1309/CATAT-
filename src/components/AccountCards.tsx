@@ -107,7 +107,15 @@ export const AccountCards: React.FC<AccountCardsProps> = ({
             t.accountId === selectedAccountForDetail.id ||
             t.targetAccountId === selectedAccountForDetail.id
         )
-        .sort((a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime())
+        .sort((a, b) => {
+          const timeA = new Date(a.transactionDate).getTime();
+          const timeB = new Date(b.transactionDate).getTime();
+          if (timeB !== timeA) return timeB - timeA;
+          const createdA = new Date(a.clientCreatedAt || a.updatedAt || 0).getTime();
+          const createdB = new Date(b.clientCreatedAt || b.updatedAt || 0).getTime();
+          if (createdB !== createdA) return createdB - createdA;
+          return b.id.localeCompare(a.id);
+        })
     : [];
 
   return (

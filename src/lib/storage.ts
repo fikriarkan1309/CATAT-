@@ -339,7 +339,10 @@ class OfflineStorageEngine {
   }
 
   public getState(): StorageState {
-    return { ...this.state };
+    return {
+      ...this.state,
+      transactions: this.sortTransactions(this.state.transactions.filter((t) => !t.isDeleted)),
+    };
   }
 
   public isOnline(): boolean {
@@ -1045,6 +1048,18 @@ class OfflineStorageEngine {
     if (this.isOnline()) this.triggerSync();
   }
 
+  public sortTransactions(txList: Transaction[]): Transaction[] {
+    return [...txList].sort((a, b) => {
+      const timeA = new Date(a.transactionDate).getTime();
+      const timeB = new Date(b.transactionDate).getTime();
+      if (timeB !== timeA) return timeB - timeA;
+      const createdA = new Date(a.clientCreatedAt || a.updatedAt || 0).getTime();
+      const createdB = new Date(b.clientCreatedAt || b.updatedAt || 0).getTime();
+      if (createdB !== createdA) return createdB - createdA;
+      return b.id.localeCompare(a.id);
+    });
+  }
+
   // --- TRANSACTIONS ---
   public addTransaction(input: {
     accountId: string;
@@ -1086,7 +1101,7 @@ class OfflineStorageEngine {
       isDeleted: false,
     };
 
-    this.state.transactions = [transaction, ...this.state.transactions];
+    this.state.transactions = this.sortTransactions([transaction, ...this.state.transactions]);
 
     this.updateAccountBalance(
       input.accountId,
@@ -1170,8 +1185,8 @@ class OfflineStorageEngine {
       this.state.accounts = [...usedAccs, ...otherAccs];
     }
 
-    this.state.transactions = this.state.transactions.map((t) =>
-      t.id === id ? updatedTxn : t
+    this.state.transactions = this.sortTransactions(
+      this.state.transactions.map((t) => (t.id === id ? updatedTxn : t))
     );
 
     this.state.syncQueue.push({
@@ -1210,7 +1225,13 @@ class OfflineStorageEngine {
       );
     }
 
+    // Remove transaction from local state
     this.state.transactions = this.state.transactions.filter((t) => t.id !== id);
+
+    // Filter out any unsynced pending INSERT/UPDATE queue items for this transaction
+    this.state.syncQueue = this.state.syncQueue.filter(
+      (q) => !(q.entityTable === 'transactions' && q.entityId === id && q.operation !== 'DELETE')
+    );
 
     const queueItem: SyncQueueItem = {
       id: this.generateUUID(),
@@ -2543,44 +2564,42 @@ class OfflineStorageEngine {
           isArchived: Boolean(r.is_archived),
           isDeleted: Boolean(r.is_deleted),
           updatedAt: r.updated_at,
-        })).filter((a: Account) => !a.isDeleted);
+        }));
+
+        const activeRemoteAccs = remoteAccs.filter((a) => !a.isDeleted);
+        const remoteDeletedAccIds = new Set(remoteAccs.filter((a) => a.isDeleted).map((a) => a.id));
+        const activeRemoteAccIds = new Set(activeRemoteAccs.map((r) => r.id));
 
         const accMap = new Map<string, Account>();
-        for (const la of this.state.accounts) {
-          if (la.isDeleted) continue;
-          accMap.set(la.id, la);
-        }
-        for (const ra of remoteAccs) {
+        for (const ra of activeRemoteAccs) {
           const pending = pendingMap.get(ra.id);
           if (pending && pending.operation === 'DELETE') continue;
           if (pending && (pending.operation === 'UPDATE' || pending.operation === 'INSERT')) {
             accMap.set(ra.id, pending.payload as Account);
           } else {
-            if (accMap.has(ra.id)) {
-              accMap.set(ra.id, { ...accMap.get(ra.id)!, ...ra });
-            } else {
-              accMap.set(ra.id, ra);
-            }
+            accMap.set(ra.id, ra);
           }
         }
-        const remoteAccIds = new Set(remoteAccs.map((r: any) => r.id));
+
         for (const la of this.state.accounts) {
-          if (la.isDeleted) continue;
-          if (!remoteAccIds.has(la.id)) {
-            const isAlreadyQueued = this.state.syncQueue.some(
-              (q) => q.entityTable === 'accounts' && q.entityId === la.id
+          if (la.isDeleted || remoteDeletedAccIds.has(la.id)) continue;
+          const pending = pendingMap.get(la.id);
+          if (pending && pending.operation === 'DELETE') continue;
+
+          if (activeRemoteAccIds.has(la.id)) {
+            if (pending) {
+              accMap.set(la.id, pending.payload as Account);
+            }
+          } else {
+            const hasPendingInsert = this.state.syncQueue.some(
+              (q) =>
+                q.entityTable === 'accounts' &&
+                q.entityId === la.id &&
+                q.operation === 'INSERT' &&
+                (q.status === 'pending' || q.status === 'syncing')
             );
-            if (!isAlreadyQueued) {
-              this.state.syncQueue.push({
-                id: this.generateUUID(),
-                entityTable: 'accounts',
-                entityId: la.id,
-                operation: 'INSERT',
-                payload: la,
-                clientTimestamp: la.updatedAt || new Date().toISOString(),
-                status: 'pending',
-                retryCount: 0,
-              });
+            if (hasPendingInsert) {
+              accMap.set(la.id, la);
             }
           }
         }
@@ -2599,10 +2618,14 @@ class OfflineStorageEngine {
           type: r.type,
           isSystem: Boolean(r.is_system),
           isDeleted: Boolean(r.is_deleted),
-        })).filter((c: Category) => !c.isDeleted);
+        }));
+
+        const activeRemoteCats = remoteCats.filter((c) => !c.isDeleted);
+        const remoteDeletedCatIds = new Set(remoteCats.filter((c) => c.isDeleted).map((c) => c.id));
+        const activeRemoteCatIds = new Set(activeRemoteCats.map((r) => r.id));
 
         const catMap = new Map<string, Category>();
-        for (const rc of remoteCats) {
+        for (const rc of activeRemoteCats) {
           const pending = pendingMap.get(rc.id);
           if (pending && pending.operation === 'DELETE') continue;
           if (pending && (pending.operation === 'UPDATE' || pending.operation === 'INSERT')) {
@@ -2611,32 +2634,26 @@ class OfflineStorageEngine {
             catMap.set(rc.id, rc);
           }
         }
+
         for (const lc of this.state.categories) {
-          if (lc.isDeleted) continue;
+          if (lc.isDeleted || remoteDeletedCatIds.has(lc.id)) continue;
           const pending = pendingMap.get(lc.id);
           if (pending && pending.operation === 'DELETE') continue;
-          if (!catMap.has(lc.id) || pending) {
-            catMap.set(lc.id, lc);
-          }
-        }
-        const remoteCatIds = new Set(remoteCats.map((r: any) => r.id));
-        for (const lc of this.state.categories) {
-          if (lc.isDeleted) continue;
-          if (!remoteCatIds.has(lc.id)) {
-            const isAlreadyQueued = this.state.syncQueue.some(
-              (q) => q.entityTable === 'categories' && q.entityId === lc.id
+
+          if (activeRemoteCatIds.has(lc.id)) {
+            if (pending) {
+              catMap.set(lc.id, pending.payload as Category);
+            }
+          } else {
+            const hasPendingInsert = this.state.syncQueue.some(
+              (q) =>
+                q.entityTable === 'categories' &&
+                q.entityId === lc.id &&
+                q.operation === 'INSERT' &&
+                (q.status === 'pending' || q.status === 'syncing')
             );
-            if (!isAlreadyQueued) {
-              this.state.syncQueue.push({
-                id: this.generateUUID(),
-                entityTable: 'categories',
-                entityId: lc.id,
-                operation: 'INSERT',
-                payload: lc,
-                clientTimestamp: new Date().toISOString(),
-                status: 'pending',
-                retryCount: 0,
-              });
+            if (hasPendingInsert) {
+              catMap.set(lc.id, lc);
             }
           }
         }
@@ -2665,10 +2682,14 @@ class OfflineStorageEngine {
           updatedAt: r.updated_at,
           version: r.version || 1,
           isDeleted: Boolean(r.is_deleted),
-        })).filter((t: Transaction) => !t.isDeleted);
+        }));
+
+        const activeRemoteTxs = remoteTxs.filter((t) => !t.isDeleted);
+        const remoteDeletedTxIds = new Set(remoteTxs.filter((t) => t.isDeleted).map((t) => t.id));
+        const activeRemoteTxIds = new Set(activeRemoteTxs.map((r) => r.id));
 
         const txMap = new Map<string, Transaction>();
-        for (const rt of remoteTxs) {
+        for (const rt of activeRemoteTxs) {
           const pending = pendingMap.get(rt.id);
           if (pending && pending.operation === 'DELETE') continue;
           if (pending && (pending.operation === 'UPDATE' || pending.operation === 'INSERT')) {
@@ -2677,35 +2698,30 @@ class OfflineStorageEngine {
             txMap.set(rt.id, rt);
           }
         }
-        const remoteTxIds = new Set(remoteTxs.map((r: any) => r.id));
+
         for (const lt of this.state.transactions) {
-          if (lt.isDeleted) continue;
+          if (lt.isDeleted || remoteDeletedTxIds.has(lt.id)) continue;
           const pending = pendingMap.get(lt.id);
           if (pending && pending.operation === 'DELETE') continue;
-          if (!txMap.has(lt.id) || pending) {
-            txMap.set(lt.id, lt);
-          }
-          if (!remoteTxIds.has(lt.id)) {
-            const isAlreadyQueued = this.state.syncQueue.some(
-              (q) => q.entityTable === 'transactions' && q.entityId === lt.id
+
+          if (activeRemoteTxIds.has(lt.id)) {
+            if (pending) {
+              txMap.set(lt.id, pending.payload as Transaction);
+            }
+          } else {
+            const hasPendingInsert = this.state.syncQueue.some(
+              (q) =>
+                q.entityTable === 'transactions' &&
+                q.entityId === lt.id &&
+                q.operation === 'INSERT' &&
+                (q.status === 'pending' || q.status === 'syncing')
             );
-            if (!isAlreadyQueued) {
-              this.state.syncQueue.push({
-                id: this.generateUUID(),
-                entityTable: 'transactions',
-                entityId: lt.id,
-                operation: 'INSERT',
-                payload: lt,
-                clientTimestamp: lt.updatedAt || new Date().toISOString(),
-                status: 'pending',
-                retryCount: 0,
-              });
+            if (hasPendingInsert) {
+              txMap.set(lt.id, lt);
             }
           }
         }
-        this.state.transactions = Array.from(txMap.values()).sort(
-          (a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime()
-        );
+        this.state.transactions = this.sortTransactions(Array.from(txMap.values()));
       }
 
       // 4. BUDGETS MERGE
@@ -2724,10 +2740,14 @@ class OfflineStorageEngine {
           rolloverAction: r.rollover_action,
           updatedAt: r.updated_at,
           isDeleted: Boolean(r.is_deleted),
-        })).filter((b: Budget) => !b.isDeleted);
+        }));
+
+        const activeRemoteBudgets = remoteBudgets.filter((b) => !b.isDeleted);
+        const remoteDeletedBudIds = new Set(remoteBudgets.filter((b) => b.isDeleted).map((b) => b.id));
+        const activeRemoteBudIds = new Set(activeRemoteBudgets.map((r) => r.id));
 
         const bMap = new Map<string, Budget>();
-        for (const rb of remoteBudgets) {
+        for (const rb of activeRemoteBudgets) {
           const pending = pendingMap.get(rb.id);
           if (pending && pending.operation === 'DELETE') continue;
           if (pending && (pending.operation === 'UPDATE' || pending.operation === 'INSERT')) {
@@ -2736,32 +2756,26 @@ class OfflineStorageEngine {
             bMap.set(rb.id, rb);
           }
         }
+
         for (const lb of this.state.budgets) {
-          if (lb.isDeleted) continue;
+          if (lb.isDeleted || remoteDeletedBudIds.has(lb.id)) continue;
           const pending = pendingMap.get(lb.id);
           if (pending && pending.operation === 'DELETE') continue;
-          if (!bMap.has(lb.id) || pending) {
-            bMap.set(lb.id, lb);
-          }
-        }
-        const remoteBudIds = new Set(remoteBudgets.map((r: any) => r.id));
-        for (const lb of this.state.budgets) {
-          if (lb.isDeleted) continue;
-          if (!remoteBudIds.has(lb.id)) {
-            const isAlreadyQueued = this.state.syncQueue.some(
-              (q) => q.entityTable === 'budgets' && q.entityId === lb.id
+
+          if (activeRemoteBudIds.has(lb.id)) {
+            if (pending) {
+              bMap.set(lb.id, pending.payload as Budget);
+            }
+          } else {
+            const hasPendingInsert = this.state.syncQueue.some(
+              (q) =>
+                q.entityTable === 'budgets' &&
+                q.entityId === lb.id &&
+                q.operation === 'INSERT' &&
+                (q.status === 'pending' || q.status === 'syncing')
             );
-            if (!isAlreadyQueued) {
-              this.state.syncQueue.push({
-                id: this.generateUUID(),
-                entityTable: 'budgets',
-                entityId: lb.id,
-                operation: 'INSERT',
-                payload: lb,
-                clientTimestamp: lb.updatedAt || new Date().toISOString(),
-                status: 'pending',
-                retryCount: 0,
-              });
+            if (hasPendingInsert) {
+              bMap.set(lb.id, lb);
             }
           }
         }
@@ -2782,10 +2796,15 @@ class OfflineStorageEngine {
           notes: r.notes,
           isCompleted: Boolean(r.is_completed),
           updatedAt: r.updated_at,
+          isDeleted: Boolean(r.is_deleted),
         }));
 
+        const activeRemoteGoals = remoteGoals.filter((g) => !g.isDeleted);
+        const remoteDeletedGoalIds = new Set(remoteGoals.filter((g) => g.isDeleted).map((g) => g.id));
+        const activeRemoteGoalIds = new Set(activeRemoteGoals.map((r) => r.id));
+
         const gMap = new Map<string, SharedGoal>();
-        for (const rg of remoteGoals) {
+        for (const rg of activeRemoteGoals) {
           const pending = pendingMap.get(rg.id);
           if (pending && pending.operation === 'DELETE') continue;
           if (pending && (pending.operation === 'UPDATE' || pending.operation === 'INSERT')) {
@@ -2794,30 +2813,26 @@ class OfflineStorageEngine {
             gMap.set(rg.id, rg);
           }
         }
+
         for (const lg of this.state.goals) {
+          if (lg.isDeleted || remoteDeletedGoalIds.has(lg.id)) continue;
           const pending = pendingMap.get(lg.id);
           if (pending && pending.operation === 'DELETE') continue;
-          if (!gMap.has(lg.id) || pending) {
-            gMap.set(lg.id, lg);
-          }
-        }
-        const remoteGoalIds = new Set(remoteGoals.map((r: any) => r.id));
-        for (const lg of this.state.goals) {
-          if (!remoteGoalIds.has(lg.id)) {
-            const isAlreadyQueued = this.state.syncQueue.some(
-              (q) => q.entityTable === 'goals' && q.entityId === lg.id
+
+          if (activeRemoteGoalIds.has(lg.id)) {
+            if (pending) {
+              gMap.set(lg.id, pending.payload as SharedGoal);
+            }
+          } else {
+            const hasPendingInsert = this.state.syncQueue.some(
+              (q) =>
+                q.entityTable === 'goals' &&
+                q.entityId === lg.id &&
+                q.operation === 'INSERT' &&
+                (q.status === 'pending' || q.status === 'syncing')
             );
-            if (!isAlreadyQueued) {
-              this.state.syncQueue.push({
-                id: this.generateUUID(),
-                entityTable: 'goals',
-                entityId: lg.id,
-                operation: 'INSERT',
-                payload: lg,
-                clientTimestamp: lg.updatedAt || new Date().toISOString(),
-                status: 'pending',
-                retryCount: 0,
-              });
+            if (hasPendingInsert) {
+              gMap.set(lg.id, lg);
             }
           }
         }
@@ -2842,10 +2857,14 @@ class OfflineStorageEngine {
           createdAt: r.created_at,
           updatedAt: r.updated_at,
           isDeleted: Boolean(r.is_deleted),
-        })).filter((b: RecurringBill) => !b.isDeleted);
+        }));
+
+        const activeRemoteBills = remoteBills.filter((b) => !b.isDeleted);
+        const remoteDeletedBillIds = new Set(remoteBills.filter((b) => b.isDeleted).map((b) => b.id));
+        const activeRemoteBillIds = new Set(activeRemoteBills.map((r) => r.id));
 
         const billMap = new Map<string, RecurringBill>();
-        for (const rBill of remoteBills) {
+        for (const rBill of activeRemoteBills) {
           const pending = pendingMap.get(rBill.id);
           if (pending && pending.operation === 'DELETE') continue;
           if (pending && (pending.operation === 'UPDATE' || pending.operation === 'INSERT')) {
@@ -2854,32 +2873,26 @@ class OfflineStorageEngine {
             billMap.set(rBill.id, rBill);
           }
         }
+
         for (const lBill of this.state.bills) {
-          if (lBill.isDeleted) continue;
+          if (lBill.isDeleted || remoteDeletedBillIds.has(lBill.id)) continue;
           const pending = pendingMap.get(lBill.id);
           if (pending && pending.operation === 'DELETE') continue;
-          if (!billMap.has(lBill.id) || pending) {
-            billMap.set(lBill.id, lBill);
-          }
-        }
-        const remoteBillIds = new Set(remoteBills.map((r: any) => r.id));
-        for (const lBill of this.state.bills) {
-          if (lBill.isDeleted) continue;
-          if (!remoteBillIds.has(lBill.id)) {
-            const isAlreadyQueued = this.state.syncQueue.some(
-              (q) => q.entityTable === 'bills' && q.entityId === lBill.id
+
+          if (activeRemoteBillIds.has(lBill.id)) {
+            if (pending) {
+              billMap.set(lBill.id, pending.payload as RecurringBill);
+            }
+          } else {
+            const hasPendingInsert = this.state.syncQueue.some(
+              (q) =>
+                q.entityTable === 'bills' &&
+                q.entityId === lBill.id &&
+                q.operation === 'INSERT' &&
+                (q.status === 'pending' || q.status === 'syncing')
             );
-            if (!isAlreadyQueued) {
-              this.state.syncQueue.push({
-                id: this.generateUUID(),
-                entityTable: 'bills',
-                entityId: lBill.id,
-                operation: 'INSERT',
-                payload: lBill,
-                clientTimestamp: lBill.updatedAt || new Date().toISOString(),
-                status: 'pending',
-                retryCount: 0,
-              });
+            if (hasPendingInsert) {
+              billMap.set(lBill.id, lBill);
             }
           }
         }
@@ -2904,10 +2917,14 @@ class OfflineStorageEngine {
           createdAt: r.created_at,
           updatedAt: r.updated_at,
           isDeleted: Boolean(r.is_deleted),
-        })).filter((d: DebtItem) => !d.isDeleted);
+        }));
+
+        const activeRemoteDebts = remoteDebts.filter((d) => !d.isDeleted);
+        const remoteDeletedDebtIds = new Set(remoteDebts.filter((d) => d.isDeleted).map((d) => d.id));
+        const activeRemoteDebtIds = new Set(activeRemoteDebts.map((r) => r.id));
 
         const dMap = new Map<string, DebtItem>();
-        for (const rd of remoteDebts) {
+        for (const rd of activeRemoteDebts) {
           const pending = pendingMap.get(rd.id);
           if (pending && pending.operation === 'DELETE') continue;
           if (pending && (pending.operation === 'UPDATE' || pending.operation === 'INSERT')) {
@@ -2916,32 +2933,26 @@ class OfflineStorageEngine {
             dMap.set(rd.id, rd);
           }
         }
+
         for (const ld of this.state.debts) {
-          if (ld.isDeleted) continue;
+          if (ld.isDeleted || remoteDeletedDebtIds.has(ld.id)) continue;
           const pending = pendingMap.get(ld.id);
           if (pending && pending.operation === 'DELETE') continue;
-          if (!dMap.has(ld.id) || pending) {
-            dMap.set(ld.id, ld);
-          }
-        }
-        const remoteDebtIds = new Set(remoteDebts.map((r: any) => r.id));
-        for (const ld of this.state.debts) {
-          if (ld.isDeleted) continue;
-          if (!remoteDebtIds.has(ld.id)) {
-            const isAlreadyQueued = this.state.syncQueue.some(
-              (q) => q.entityTable === 'debts' && q.entityId === ld.id
+
+          if (activeRemoteDebtIds.has(ld.id)) {
+            if (pending) {
+              dMap.set(ld.id, pending.payload as DebtItem);
+            }
+          } else {
+            const hasPendingInsert = this.state.syncQueue.some(
+              (q) =>
+                q.entityTable === 'debts' &&
+                q.entityId === ld.id &&
+                q.operation === 'INSERT' &&
+                (q.status === 'pending' || q.status === 'syncing')
             );
-            if (!isAlreadyQueued) {
-              this.state.syncQueue.push({
-                id: this.generateUUID(),
-                entityTable: 'debts',
-                entityId: ld.id,
-                operation: 'INSERT',
-                payload: ld,
-                clientTimestamp: ld.updatedAt || new Date().toISOString(),
-                status: 'pending',
-                retryCount: 0,
-              });
+            if (hasPendingInsert) {
+              dMap.set(ld.id, ld);
             }
           }
         }

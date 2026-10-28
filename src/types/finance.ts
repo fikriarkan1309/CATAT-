@@ -99,6 +99,7 @@ export interface SharedGoal {
   notes?: string;
   isCompleted: boolean;
   updatedAt: string;
+  isDeleted?: boolean;
 }
 
 export interface RecurringBill {
