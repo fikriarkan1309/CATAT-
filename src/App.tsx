@@ -205,18 +205,6 @@ export default function App() {
     setEditingTransaction(null);
   };
 
-  if (!isAuthenticated) {
-    return (
-      <AuthLoginScreen
-        onLogin={(em, pw) => login(em, pw)}
-        onSignUp={(input) => signUp(input)}
-        defaultEmail={userAccount?.email || 'fikriarkan1309@gmail.com'}
-        theme={theme}
-        onToggleTheme={toggleTheme}
-      />
-    );
-  }
-
   // --- MOBILE BACK BUTTON & HISTORY NAVIGATION CONTROLLER ---
   const LEVEL_2_TABS: AppNavTab[] = ['summary', 'accounts', 'more'];
   const LEVEL_3_TABS: AppNavTab[] = [
@@ -262,6 +250,8 @@ export default function App() {
 
   // Popstate Listener for Mobile Back Button / Edge Swipe
   React.useEffect(() => {
+    if (!isAuthenticated) return;
+
     const handlePopState = (e: PopStateEvent) => {
       // 1. If any modal/sheet is open, close modal first and retain current tab history
       const isModalOpen =
@@ -313,6 +303,7 @@ export default function App() {
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, [
+    isAuthenticated,
     currentTab,
     isQuickAddSheetOpen,
     isTxnModalOpen,
@@ -324,6 +315,18 @@ export default function App() {
     isUserAccountModalOpen,
     isSyncModalOpen,
   ]);
+
+  if (!isAuthenticated) {
+    return (
+      <AuthLoginScreen
+        onLogin={(em, pw) => login(em, pw)}
+        onSignUp={(input) => signUp(input)}
+        defaultEmail={userAccount?.email || 'fikriarkan1309@gmail.com'}
+        theme={theme}
+        onToggleTheme={toggleTheme}
+      />
+    );
+  }
 
   // Determine if on a sub-view originating from 'Lainnya' requiring a back button
   const isSubViewFromMore = [

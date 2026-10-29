@@ -57,7 +57,9 @@ class OfflineStorageEngine {
   private state: StorageState;
   private listeners: Set<() => void> = new Set();
   private isSyncing = false;
+  private lastSyncStartTime = 0;
   private realtimeChannel: any = null;
+  private currentSubscribedUserId: string | null = null;
   private heartbeatTimer: any = null;
   private broadcastChannel: BroadcastChannel | null = null;
 
@@ -89,12 +91,46 @@ class OfflineStorageEngine {
     this.init();
   }
 
+  /**
+   * Memastikan token autentikasi Supabase selalu valid dan segar (auto-refresh jika expired).
+   * Mencegah kegagalan sinkronisasi (JWT expired 401) saat HP dibiarkan standby / semalaman.
+   */
+  public async getValidSession(supabase: any) {
+    if (!supabase) return null;
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      let session = sessionData?.session;
+
+      // Jika session tidak ada atau kedaluwarsa dalam 2 menit ke depan, segarkan token!
+      const nowMs = Date.now();
+      const isExpiring = !session || (session.expires_at && session.expires_at * 1000 < nowMs + 120000);
+      if (isExpiring) {
+        const { data: refreshData, error: refreshErr } = await supabase.auth.refreshSession();
+        if (!refreshErr && refreshData?.session) {
+          session = refreshData.session;
+        } else {
+          const { data: userData } = await supabase.auth.getUser();
+          if (userData?.user) {
+            const { data: reSession } = await supabase.auth.getSession();
+            session = reSession?.session || session;
+          }
+        }
+      }
+      return session;
+    } catch (err) {
+      console.warn('[Supabase Auth] Verifikasi session gagal:', err);
+      return null;
+    }
+  }
+
   private async syncAndPull(userId: string) {
     const supabase = getSupabaseClient();
     if (supabase && isSupabaseConfigured() && this.isOnline()) {
+      if (!this.realtimeChannel || this.currentSubscribedUserId !== userId) {
+        this.setupRealtimeSubscription(userId);
+      }
       await this.triggerSync();
       await this.pullFromSupabase(supabase, userId);
-      this.setupRealtimeSubscription(userId);
       this.notify();
     }
   }
@@ -103,13 +139,26 @@ class OfflineStorageEngine {
     const supabase = getSupabaseClient();
     if (!supabase || !isSupabaseConfigured() || !this.isOnline()) return;
 
+    // Lepaskan lock sinkronisasi jika macet lebih dari 15 detik (misal akibat HP sleep saat fetch)
+    if (this.isSyncing && Date.now() - this.lastSyncStartTime > 15000) {
+      console.warn('[Sync] Lock sinkronisasi macet (>15s), melepaskan lock otomatis.');
+      this.isSyncing = false;
+    }
+
     try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const userId = sessionData?.session?.user?.id;
+      const session = await this.getValidSession(supabase);
+      const userId = session?.user?.id;
       if (userId) {
-        await this.syncAndPull(userId);
+        if (!this.realtimeChannel || this.currentSubscribedUserId !== userId) {
+          this.setupRealtimeSubscription(userId);
+        }
+        await this.triggerSync();
+        await this.pullFromSupabase(supabase, userId);
+        this.notify();
       }
-    } catch {}
+    } catch (err) {
+      console.warn('[Sync] syncAndPullActiveUser exception:', err);
+    }
   }
 
   private async init() {
@@ -351,6 +400,9 @@ class OfflineStorageEngine {
   }
 
   public isSyncInProgress(): boolean {
+    if (this.isSyncing && Date.now() - this.lastSyncStartTime > 15000) {
+      this.isSyncing = false;
+    }
     return this.isSyncing;
   }
 
@@ -771,6 +823,11 @@ class OfflineStorageEngine {
             };
           } catch {}
 
+          this.state.isAuthenticated = true;
+          this.state.currentUserEmail = cleanEmail;
+          this.setupRealtimeSubscription(data.user.id);
+          this.persist();
+
           await this.triggerSync();
           await this.pullFromSupabase(supabase, data.user.id);
         }
@@ -899,22 +956,31 @@ class OfflineStorageEngine {
 
   public async logout(): Promise<void> {
     const supabase = getSupabaseClient();
+    if (this.realtimeChannel && supabase) {
+      try {
+        supabase.removeChannel(this.realtimeChannel);
+      } catch {}
+      this.realtimeChannel = null;
+    }
+    this.currentSubscribedUserId = null;
+
     if (supabase && isSupabaseConfigured()) {
       try {
         await supabase.auth.signOut();
       } catch {}
     }
-    this.persist();
-    this.state.isAuthenticated = false;
-    try {
-      if (this.state.currentUserEmail) {
-        localStorage.removeItem(`keluarga_fin_state_${this.state.currentUserEmail}`);
-      }
-      localStorage.removeItem('keluarga_fin_current_user');
-    } catch {}
+
+    const prevEmail = this.state.currentUserEmail;
     this.state = {
       ...this.state,
+      isAuthenticated: false,
       currentUserEmail: '',
+      userAccount: {
+        accountName: '',
+        email: '',
+        password: '',
+        createdAt: '',
+      },
       accounts: INITIAL_ACCOUNTS,
       categories: INITIAL_CATEGORIES,
       transactions: INITIAL_TRANSACTIONS,
@@ -925,6 +991,15 @@ class OfflineStorageEngine {
       syncQueue: [],
       guiltFree: INITIAL_GUILT_FREE,
     };
+
+    try {
+      if (prevEmail) {
+        localStorage.removeItem(`keluarga_fin_state_${prevEmail}`);
+      }
+      localStorage.removeItem('keluarga_fin_current_user');
+      localStorage.setItem('keluarga_fin_state', JSON.stringify(this.state));
+    } catch {}
+
     this.persist();
   }
 
@@ -2532,7 +2607,10 @@ class OfflineStorageEngine {
   // --- SUPABASE PULL & PUSH SYNC ENGINE ---
   public async pullFromSupabase(supabase: any, userId: string): Promise<boolean> {
     try {
-      const [accRes, catRes, txnRes, budRes, goalRes, billRes, debtRes] = await Promise.all([
+      // Pastikan sesi autentikasi segar sebelum menarik data
+      await this.getValidSession(supabase);
+
+      let [accRes, catRes, txnRes, budRes, goalRes, billRes, debtRes] = await Promise.all([
         supabase.from('accounts').select('*').eq('user_id', userId),
         supabase.from('categories').select('*').eq('user_id', userId),
         supabase.from('transactions').select('*').eq('user_id', userId),
@@ -2541,6 +2619,25 @@ class OfflineStorageEngine {
         supabase.from('bills').select('*').eq('user_id', userId),
         supabase.from('debts').select('*').eq('user_id', userId),
       ]);
+
+      // Jika terdeteksi token kedaluwarsa (401 / JWT expired saat HP ditinggal lama), segarkan token dan ulangi sekali
+      const hasJwtError = [accRes, catRes, txnRes, budRes, goalRes, billRes, debtRes].some(
+        (r) => r.error && (r.error.message?.toLowerCase().includes('jwt') || r.error.code === 'PGRST301' || r.status === 401)
+      );
+
+      if (hasJwtError) {
+        console.warn('[Sync Pull] Terdeteksi JWT expired saat query, merefresh session Supabase dan mencoba ulang...');
+        await supabase.auth.refreshSession();
+        [accRes, catRes, txnRes, budRes, goalRes, billRes, debtRes] = await Promise.all([
+          supabase.from('accounts').select('*').eq('user_id', userId),
+          supabase.from('categories').select('*').eq('user_id', userId),
+          supabase.from('transactions').select('*').eq('user_id', userId),
+          supabase.from('budgets').select('*').eq('user_id', userId),
+          supabase.from('goals').select('*').eq('user_id', userId),
+          supabase.from('bills').select('*').eq('user_id', userId),
+          supabase.from('debts').select('*').eq('user_id', userId),
+        ]);
+      }
 
       const pendingMap = new Map<string, SyncQueueItem>();
       for (const q of this.state.syncQueue) {
@@ -2977,14 +3074,21 @@ class OfflineStorageEngine {
     const supabase = getSupabaseClient();
     if (!supabase || !isSupabaseConfigured() || !userId) return;
 
+    // Jika sudah subscribe untuk userId yang sama, jangan unsubscribe & subscribe ulang
+    if (this.realtimeChannel && this.currentSubscribedUserId === userId) {
+      return;
+    }
+
     if (this.realtimeChannel) {
       try {
         supabase.removeChannel(this.realtimeChannel);
       } catch {}
       this.realtimeChannel = null;
+      this.currentSubscribedUserId = null;
     }
 
     try {
+      this.currentSubscribedUserId = userId;
       this.realtimeChannel = supabase
         .channel(`realtime-sync-${userId}`)
         .on(
@@ -3025,10 +3129,16 @@ class OfflineStorageEngine {
         .subscribe((status: string) => {
           if (status === 'SUBSCRIBED') {
             console.log('[Supabase Realtime] Live sync active for user:', userId);
+          } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+            console.warn('[Supabase Realtime] Channel disconnect (' + status + '), resetting for auto-reconnect');
+            this.realtimeChannel = null;
+            this.currentSubscribedUserId = null;
           }
         });
     } catch (err) {
       console.warn('Realtime subscription setup failed:', err);
+      this.realtimeChannel = null;
+      this.currentSubscribedUserId = null;
     }
   }
 
@@ -3413,6 +3523,7 @@ class OfflineStorageEngine {
     const pendingItems = this.state.syncQueue.filter((q) => q.status === 'pending');
 
     this.isSyncing = true;
+    this.lastSyncStartTime = Date.now();
     this.notify();
 
     const syncingIds = new Set(pendingItems.map((i) => i.id));
@@ -3427,9 +3538,8 @@ class OfflineStorageEngine {
 
     try {
       if (supabase && isSupabaseConfigured()) {
-        let userId: string | undefined;
-        const { data: sessionData } = await supabase.auth.getSession();
-        userId = sessionData?.session?.user?.id;
+        const session = await this.getValidSession(supabase);
+        let userId = session?.user?.id;
         if (!userId) {
           const { data: userData } = await supabase.auth.getUser();
           userId = userData?.user?.id;
