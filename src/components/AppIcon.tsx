@@ -11,7 +11,8 @@ export type AppIconName =
   | 'lainnya-anggaran'
   | 'lainnya-tagihanrutin'
   | 'lainnya-hutangpiutang'
-  | 'lainnya-transaksi';
+  | 'lainnya-transaksi'
+  | 'lainnya-export';
 
 const ICON_MAP: Record<AppIconName, string> = {
   'tab-home': '/icons/tab%20bawah-home.svg',
@@ -25,6 +26,7 @@ const ICON_MAP: Record<AppIconName, string> = {
   'lainnya-tagihanrutin': '/icons/lainnya-tagihanrutin.svg',
   'lainnya-hutangpiutang': '/icons/lainnya-hutangpiutang.svg',
   'lainnya-transaksi': '/icons/lainnya-transaksi.svg',
+  'lainnya-export': '/icons/lainnya-export.svg',
 };
 
 interface AppIconProps {

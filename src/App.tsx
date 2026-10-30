@@ -20,6 +20,7 @@ import { DebtsLoansView } from './components/DebtsLoansView';
 import { RecentTransactions } from './components/RecentTransactions';
 import { MonthlyAnalysisView } from './components/MonthlyAnalysisView';
 import { CategoryManagementView } from './components/CategoryManagementView';
+import { ExportLaporanView } from './components/ExportLaporanView';
 import { SyncQueueModal } from './components/SyncQueueModal';
 import { ThemedTransactionModal } from './components/ThemedTransactionModal';
 import { AccountManageModal } from './components/AccountManageModal';
@@ -215,6 +216,7 @@ export default function App() {
     'debts',
     'transactions',
     'categories',
+    'export',
   ];
 
   // Initialize initial history entry
@@ -345,8 +347,8 @@ export default function App() {
 
   return (
     <div className={`min-h-screen ${hasCustomGradientHeader ? 'h-screen h-dvh overflow-hidden' : ''} bg-white dark:bg-slate-950 flex flex-col font-sans text-slate-900 dark:text-slate-100 overflow-x-clip transition-colors`}>
-      {/* Top Header Navigation (Logo 2.png + Settings Gear) - Hidden on accounts & savings which have custom gradient headers */}
-      {!hasCustomGradientHeader && (
+      {/* Top Header Navigation (Logo 2.png + Settings Gear) - Hidden on accounts, savings & export */}
+      {!hasCustomGradientHeader && currentTab !== 'export' && (
         <AppHeader
           onLogoClick={() => handleSelectTab('home')}
           onOpenSettings={() => setIsSettingsMenuOpen(true)}
@@ -568,6 +570,24 @@ export default function App() {
               onResetExternalOpenAdd={() => setExternalOpenCategoryAdd(false)}
             />
           </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* SUB MENU DARI LAINNYA: EXPORT LAPORAN */}
+        {/* ========================================================================= */}
+        {currentTab === 'export' && (
+          <ExportLaporanView
+            accounts={accounts}
+            categories={categories}
+            transactions={transactions}
+            budgets={budgets}
+            goals={goals}
+            bills={bills}
+            debts={debts}
+            userName={userAccount?.accountName}
+            onBack={() => handleSelectTab('more')}
+            onExportCSV={exportTransactionsCSV}
+          />
         )}
       </main>
 

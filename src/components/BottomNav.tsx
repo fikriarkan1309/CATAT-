@@ -13,7 +13,8 @@ export type AppNavTab =
   | 'transactions'
   | 'comparison'
   | 'more'
-  | 'categories';
+  | 'categories'
+  | 'export';
 
 interface BottomNavProps {
   currentTab: AppNavTab;
@@ -62,7 +63,8 @@ export const BottomNav: React.FC<BottomNavProps> = ({
         currentTab === 'debts' ||
         currentTab === 'transactions' ||
         currentTab === 'comparison' ||
-        currentTab === 'categories',
+        currentTab === 'categories' ||
+        currentTab === 'export',
     },
   ];
 
