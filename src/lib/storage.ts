@@ -47,6 +47,7 @@ interface StorageState {
   userAccount: RegisteredUser;
   isAuthenticated: boolean;
   currentUserEmail?: string;
+  currentUserId?: string;
   isSimulatedOffline: boolean;
   isLocked: boolean;
   pin: string;
@@ -62,6 +63,8 @@ class OfflineStorageEngine {
   private currentSubscribedUserId: string | null = null;
   private heartbeatTimer: any = null;
   private broadcastChannel: BroadcastChannel | null = null;
+  private sessionPromise: Promise<any> | null = null;
+  private wakeUpDebounceTimer: any = null;
 
   constructor() {
     this.state = {
@@ -83,6 +86,7 @@ class OfflineStorageEngine {
       },
       isAuthenticated: false,
       currentUserEmail: '',
+      currentUserId: '',
       isSimulatedOffline: false,
       isLocked: false,
       pin: '',
@@ -92,35 +96,124 @@ class OfflineStorageEngine {
   }
 
   /**
-   * Memastikan token autentikasi Supabase selalu valid dan segar (auto-refresh jika expired).
-   * Mencegah kegagalan sinkronisasi (JWT expired 401) saat HP dibiarkan standby / semalaman.
+   * Memastikan token autentikasi Supabase selalu valid dan segar.
+   * Dilengkapi Single-Flight Promise untuk mencegah collision token rotation saat HP bangun dari sleep.
+   * Dilengkapi Silent Auto-Reauthentication: jika HP standby semalaman dan token habis total,
+   * pulihkan sesi Supabase di background secara otomatis tanpa memaksa user logout-login!
    */
-  public async getValidSession(supabase: any) {
+  public async getValidSession(supabase: any): Promise<any> {
     if (!supabase) return null;
-    try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      let session = sessionData?.session;
+    if (this.sessionPromise) {
+      return this.sessionPromise;
+    }
 
-      // Jika session tidak ada atau kedaluwarsa dalam 2 menit ke depan, segarkan token!
-      const nowMs = Date.now();
-      const isExpiring = !session || (session.expires_at && session.expires_at * 1000 < nowMs + 120000);
-      if (isExpiring) {
-        const { data: refreshData, error: refreshErr } = await supabase.auth.refreshSession();
-        if (!refreshErr && refreshData?.session) {
-          session = refreshData.session;
-        } else {
-          const { data: userData } = await supabase.auth.getUser();
-          if (userData?.user) {
-            const { data: reSession } = await supabase.auth.getSession();
-            session = reSession?.session || session;
+    this.sessionPromise = (async () => {
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        let session = sessionData?.session;
+        const nowMs = Date.now();
+
+        // 1. Jika session masih berlaku dan belum mendekati masa kedaluwarsa (> 2 menit)
+        if (session && session.expires_at && session.expires_at * 1000 > nowMs + 120000) {
+          if (session.user?.id && !this.state.currentUserId) {
+            this.state.currentUserId = session.user.id;
+          }
+          return session;
+        }
+
+        // 2. Coba refresh session jika ada session sebelumnya
+        if (session) {
+          try {
+            const { data: refreshData, error: refreshErr } = await supabase.auth.refreshSession();
+            if (!refreshErr && refreshData?.session) {
+              session = refreshData.session;
+              if (session?.user?.id) {
+                this.state.currentUserId = session.user.id;
+              }
+              return session;
+            }
+          } catch (rErr) {
+            console.warn('[Supabase Auth] refreshSession exception:', rErr);
           }
         }
+
+        // 3. SILENT AUTO-REAUTHENTICATION:
+        // Solusi utama keluhan "Tiap hari harus logout-login untuk sync".
+        // Saat device dibiarkan standby berjam-jam/semalaman, token Supabase bisa habis.
+        // Pulihkan sesi secara silent di background menggunakan auth vault tersimpan!
+        if (typeof window !== 'undefined') {
+          try {
+            let vaultRaw = localStorage.getItem('keluarga_fin_auth_vault');
+            if (!vaultRaw && this.state.currentUserEmail) {
+              const usersRaw = localStorage.getItem('keluarga_fin_users');
+              if (usersRaw) {
+                const uMap = JSON.parse(usersRaw);
+                const u = uMap[this.state.currentUserEmail];
+                if (u && u.password) {
+                  vaultRaw = JSON.stringify({
+                    email: this.state.currentUserEmail,
+                    password: u.password,
+                    accountName: u.accountName,
+                  });
+                  localStorage.setItem('keluarga_fin_auth_vault', vaultRaw);
+                }
+              }
+            }
+
+            if (vaultRaw) {
+              const vault = JSON.parse(vaultRaw);
+              if (vault.email && vault.password) {
+                console.log('[Supabase Auth] Memulihkan sesi Supabase otomatis di background...');
+                const { data: reAuthData, error: reAuthErr } = await supabase.auth.signInWithPassword({
+                  email: vault.email,
+                  password: vault.password,
+                });
+                if (!reAuthErr && reAuthData?.session) {
+                  console.log('[Supabase Auth] Sesi Supabase pulih secara otomatis! Sync aktif.');
+                  session = reAuthData.session;
+                  this.state.currentUserId = reAuthData.user.id;
+                  this.state.isAuthenticated = true;
+                  this.state.currentUserEmail = vault.email;
+                  this.persist();
+                  return session;
+                }
+              }
+            }
+          } catch (vErr) {
+            console.warn('[Supabase Auth] Auto-reauth exception:', vErr);
+          }
+        }
+
+        // 4. Fallback getUser
+        const { data: userData } = await supabase.auth.getUser();
+        if (userData?.user) {
+          const { data: reSession } = await supabase.auth.getSession();
+          if (reSession?.session) {
+            session = reSession.session;
+            this.state.currentUserId = userData.user.id;
+            return session;
+          }
+        }
+
+        return session || null;
+      } catch (err) {
+        console.warn('[Supabase Auth] Verifikasi session gagal:', err);
+        return null;
+      } finally {
+        this.sessionPromise = null;
       }
-      return session;
-    } catch (err) {
-      console.warn('[Supabase Auth] Verifikasi session gagal:', err);
-      return null;
+    })();
+
+    return this.sessionPromise;
+  }
+
+  public triggerWakeupSync() {
+    if (this.wakeUpDebounceTimer) {
+      clearTimeout(this.wakeUpDebounceTimer);
     }
+    this.wakeUpDebounceTimer = setTimeout(() => {
+      this.syncAndPullActiveUser();
+    }, 300);
   }
 
   private async syncAndPull(userId: string) {
@@ -147,7 +240,7 @@ class OfflineStorageEngine {
 
     try {
       const session = await this.getValidSession(supabase);
-      const userId = session?.user?.id;
+      const userId = session?.user?.id || this.state.currentUserId;
       if (userId) {
         if (!this.realtimeChannel || this.currentSubscribedUserId !== userId) {
           this.setupRealtimeSubscription(userId);
@@ -266,32 +359,29 @@ class OfflineStorageEngine {
 
         window.addEventListener('online', () => {
           this.notify();
-          const supabase = getSupabaseClient();
-          if (supabase && isSupabaseConfigured()) {
-            supabase.auth.getUser().then(({ data }) => {
-              if (data?.user) {
-                this.syncAndPull(data.user.id);
-              }
-            });
-          }
+          this.triggerWakeupSync();
         });
 
         window.addEventListener('offline', () => {
           this.notify();
         });
 
-        // Event saat kembali membuka tab / aplikasi (mendukung iPad / iPhone Safari)
+        // Event saat kembali membuka tab / aplikasi (mendukung iPad / iPhone Safari / Android PWA)
         window.addEventListener('focus', () => {
-          this.syncAndPullActiveUser();
+          this.triggerWakeupSync();
         });
 
         document.addEventListener('visibilitychange', () => {
           if (document.visibilityState === 'visible') {
-            this.syncAndPullActiveUser();
+            this.triggerWakeupSync();
           }
         });
 
-        // Heartbeat sinkronisasi latar belakang otomatis setiap 6 detik
+        window.addEventListener('pageshow', () => {
+          this.triggerWakeupSync();
+        });
+
+        // Heartbeat sinkronisasi latar belakang otomatis setiap 5 detik
         if (this.heartbeatTimer) {
           clearInterval(this.heartbeatTimer);
         }
@@ -299,13 +389,13 @@ class OfflineStorageEngine {
           if (this.isOnline() && !this.isSyncing) {
             this.syncAndPullActiveUser();
           }
-        }, 6000);
+        }, 5000);
 
         const supabase = getSupabaseClient();
         if (supabase && isSupabaseConfigured()) {
-          supabase.auth.getSession().then(({ data }) => {
-            if (data?.session?.user) {
-              const u = data.session.user;
+          this.getValidSession(supabase).then((session) => {
+            if (session?.user) {
+              const u = session.user;
               const email = u.email || this.state.userAccount?.email || '';
               const accountName =
                 u.user_metadata?.account_name ||
@@ -319,6 +409,7 @@ class OfflineStorageEngine {
               };
               this.state.isAuthenticated = true;
               this.state.currentUserEmail = email;
+              this.state.currentUserId = u.id;
               this.persist();
               this.syncAndPull(u.id);
             }
@@ -328,12 +419,18 @@ class OfflineStorageEngine {
             if (session?.user) {
               this.state.isAuthenticated = true;
               this.state.currentUserEmail = session.user.email || '';
+              this.state.currentUserId = session.user.id;
               this.persist();
               this.setupRealtimeSubscription(session.user.id);
               this.syncAndPull(session.user.id);
             }
           });
         }
+
+        // Panggil sinkronisasi awal setelah boot aplikasi
+        setTimeout(() => {
+          this.syncAndPullActiveUser();
+        }, 600);
       }
     } catch {
       // storage unavailable
@@ -821,10 +918,23 @@ class OfflineStorageEngine {
               password: '••••••••',
               createdAt: data.user.created_at || new Date().toISOString(),
             };
+
+            try {
+              localStorage.setItem(
+                'keluarga_fin_auth_vault',
+                JSON.stringify({
+                  email: cleanEmail,
+                  password: cleanPassword,
+                  userId: data.user.id,
+                  accountName,
+                })
+              );
+            } catch {}
           } catch {}
 
           this.state.isAuthenticated = true;
           this.state.currentUserEmail = cleanEmail;
+          this.state.currentUserId = data.user.id;
           this.setupRealtimeSubscription(data.user.id);
           this.persist();
 
@@ -975,6 +1085,7 @@ class OfflineStorageEngine {
       ...this.state,
       isAuthenticated: false,
       currentUserEmail: '',
+      currentUserId: '',
       userAccount: {
         accountName: '',
         email: '',
@@ -997,6 +1108,7 @@ class OfflineStorageEngine {
         localStorage.removeItem(`keluarga_fin_state_${prevEmail}`);
       }
       localStorage.removeItem('keluarga_fin_current_user');
+      localStorage.removeItem('keluarga_fin_auth_vault');
       localStorage.setItem('keluarga_fin_state', JSON.stringify(this.state));
     } catch {}
 
@@ -2613,7 +2725,7 @@ class OfflineStorageEngine {
       let [accRes, catRes, txnRes, budRes, goalRes, billRes, debtRes] = await Promise.all([
         supabase.from('accounts').select('*').eq('user_id', userId),
         supabase.from('categories').select('*').eq('user_id', userId),
-        supabase.from('transactions').select('*').eq('user_id', userId),
+        supabase.from('transactions').select('*').eq('user_id', userId).order('transaction_date', { ascending: false }),
         supabase.from('budgets').select('*').eq('user_id', userId),
         supabase.from('goals').select('*').eq('user_id', userId),
         supabase.from('bills').select('*').eq('user_id', userId),
@@ -2627,15 +2739,16 @@ class OfflineStorageEngine {
 
       if (hasJwtError) {
         console.warn('[Sync Pull] Terdeteksi JWT expired saat query, merefresh session Supabase dan mencoba ulang...');
-        await supabase.auth.refreshSession();
+        const refreshedSession = await this.getValidSession(supabase);
+        const retryUserId = refreshedSession?.user?.id || this.state.currentUserId || userId;
         [accRes, catRes, txnRes, budRes, goalRes, billRes, debtRes] = await Promise.all([
-          supabase.from('accounts').select('*').eq('user_id', userId),
-          supabase.from('categories').select('*').eq('user_id', userId),
-          supabase.from('transactions').select('*').eq('user_id', userId),
-          supabase.from('budgets').select('*').eq('user_id', userId),
-          supabase.from('goals').select('*').eq('user_id', userId),
-          supabase.from('bills').select('*').eq('user_id', userId),
-          supabase.from('debts').select('*').eq('user_id', userId),
+          supabase.from('accounts').select('*').eq('user_id', retryUserId),
+          supabase.from('categories').select('*').eq('user_id', retryUserId),
+          supabase.from('transactions').select('*').eq('user_id', retryUserId).order('transaction_date', { ascending: false }),
+          supabase.from('budgets').select('*').eq('user_id', retryUserId),
+          supabase.from('goals').select('*').eq('user_id', retryUserId),
+          supabase.from('bills').select('*').eq('user_id', retryUserId),
+          supabase.from('debts').select('*').eq('user_id', retryUserId),
         ]);
       }
 
