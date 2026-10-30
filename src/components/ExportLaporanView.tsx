@@ -11,17 +11,12 @@ import {
   ChevronDown,
   ChevronUp,
   Sliders,
-  DollarSign,
-  Wallet,
-  PiggyBank,
-  PieChart,
-  Repeat,
-  HandCoins,
-  ReceiptText,
   CheckCircle2,
   AlertCircle,
   X,
 } from 'lucide-react';
+import { AppIcon } from './AppIcon';
+import { PdfCanvasViewer } from './PdfCanvasViewer';
 import {
   Account,
   Category,
@@ -130,6 +125,7 @@ export const ExportLaporanView: React.FC<ExportLaporanViewProps> = ({
   // Generation status
   const [isGenerating, setIsGenerating] = useState(false);
   const [previewBlobUrl, setPreviewBlobUrl] = useState<string | null>(null);
+  const [previewPdfData, setPreviewPdfData] = useState<ArrayBuffer | null>(null);
   const [previewFilename, setPreviewFilename] = useState<string>('');
   const [showSuccessToast, setShowSuccessToast] = useState(false);
 
@@ -268,7 +264,7 @@ export const ExportLaporanView: React.FC<ExportLaporanViewProps> = ({
     setIsGenerating(true);
     try {
       const options = buildOptions();
-      const { blob, filename } = await generateFinancialPDF(options, {
+      const { blob, arrayBuffer, filename } = await generateFinancialPDF(options, {
         accounts,
         categories,
         transactions,
@@ -280,6 +276,7 @@ export const ExportLaporanView: React.FC<ExportLaporanViewProps> = ({
 
       const url = URL.createObjectURL(blob);
       setPreviewBlobUrl(url);
+      setPreviewPdfData(arrayBuffer);
       setPreviewFilename(filename);
     } catch (err) {
       console.error('Failed to preview PDF:', err);
@@ -293,6 +290,7 @@ export const ExportLaporanView: React.FC<ExportLaporanViewProps> = ({
       URL.revokeObjectURL(previewBlobUrl);
     }
     setPreviewBlobUrl(null);
+    setPreviewPdfData(null);
   };
 
   return (
@@ -334,60 +332,6 @@ export const ExportLaporanView: React.FC<ExportLaporanViewProps> = ({
       </div>
 
       <div className="max-w-lg mx-auto sm:max-w-xl md:max-w-2xl w-full px-4 pt-4 space-y-4">
-        {/* ========================================================================= */}
-        {/* TOP QUICK ACTION STRIP (PREVIEW PDF & EXPORT PDF) */}
-        {/* ========================================================================= */}
-        <div className="bg-gradient-to-r from-sky-500/10 via-blue-500/10 to-indigo-500/10 dark:from-sky-950/40 dark:via-blue-950/30 dark:to-indigo-950/40 p-3 sm:p-4 rounded-3xl border border-sky-200/80 dark:border-sky-800/60 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 shadow-2xs">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-2xl bg-sky-600 text-white flex items-center justify-center shrink-0 shadow-xs">
-              <Download className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs sm:text-sm font-extrabold text-slate-900 dark:text-white">
-                  Ekspor Dokumen PDF
-                </span>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-100 text-sky-700 dark:bg-sky-900/60 dark:text-sky-300">
-                  {selectedCount} dari 7 Modul
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                Laporan rapi, terstruktur &amp; siap cetak A4
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              disabled={selectedCount === 0 || isGenerating}
-              onClick={handlePreviewPDF}
-              className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 py-2.5 px-3.5 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold border border-slate-200 dark:border-slate-700 shadow-2xs transition-all disabled:opacity-50 cursor-pointer"
-            >
-              <Eye className="w-4 h-4 text-sky-600 dark:text-sky-400" />
-              <span>Preview PDF</span>
-            </button>
-
-            <button
-              type="button"
-              disabled={selectedCount === 0 || isGenerating}
-              onClick={handleDownloadPDF}
-              className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold shadow-md shadow-sky-600/25 transition-all disabled:opacity-50 cursor-pointer"
-            >
-              {isGenerating ? (
-                <>
-                  <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  <span>Memproses...</span>
-                </>
-              ) : (
-                <>
-                  <Download className="w-4 h-4" />
-                  <span>Export PDF</span>
-                </>
-              )}
-            </button>
-          </div>
-        </div>
 
         {/* ========================================================================= */}
         {/* BAGIAN 1: RENTANG TANGGAL / PERIODE */}
@@ -536,7 +480,7 @@ export const ExportLaporanView: React.FC<ExportLaporanViewProps> = ({
                   <CheckSquare className="w-4 h-4" />
                 </div>
                 <div className="w-8 h-8 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
-                  <DollarSign className="w-4 h-4" />
+                  <AppIcon name="tab-ringkasan" className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                 </div>
                 <div>
                   <span className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white block">
@@ -614,7 +558,7 @@ export const ExportLaporanView: React.FC<ExportLaporanViewProps> = ({
                   <CheckSquare className="w-4 h-4" />
                 </div>
                 <div className="w-8 h-8 rounded-xl bg-blue-100 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
-                  <Wallet className="w-4 h-4" />
+                  <AppIcon name="tab-rekening" className="w-5 h-5 text-blue-600 dark:text-blue-400" />
                 </div>
                 <div>
                   <span className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white block">
@@ -710,7 +654,7 @@ export const ExportLaporanView: React.FC<ExportLaporanViewProps> = ({
                   <CheckSquare className="w-4 h-4" />
                 </div>
                 <div className="w-8 h-8 rounded-xl bg-green-100 dark:bg-green-950/60 text-green-600 dark:text-green-400 flex items-center justify-center shrink-0">
-                  <PiggyBank className="w-4 h-4" />
+                  <AppIcon name="lainnya-tabungan" className="w-5 h-5 text-green-600 dark:text-green-400" />
                 </div>
                 <div>
                   <span className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white block">
@@ -783,7 +727,7 @@ export const ExportLaporanView: React.FC<ExportLaporanViewProps> = ({
                   <CheckSquare className="w-4 h-4" />
                 </div>
                 <div className="w-8 h-8 rounded-xl bg-sky-100 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 flex items-center justify-center shrink-0">
-                  <PieChart className="w-4 h-4" />
+                  <AppIcon name="lainnya-anggaran" className="w-5 h-5 text-sky-600 dark:text-sky-400" />
                 </div>
                 <div>
                   <span className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white block">
@@ -837,7 +781,7 @@ export const ExportLaporanView: React.FC<ExportLaporanViewProps> = ({
                   <CheckSquare className="w-4 h-4" />
                 </div>
                 <div className="w-8 h-8 rounded-xl bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
-                  <Repeat className="w-4 h-4" />
+                  <AppIcon name="lainnya-tagihanrutin" className="w-5 h-5 text-rose-600 dark:text-rose-400" />
                 </div>
                 <div>
                   <span className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white block">
@@ -910,7 +854,7 @@ export const ExportLaporanView: React.FC<ExportLaporanViewProps> = ({
                   <CheckSquare className="w-4 h-4" />
                 </div>
                 <div className="w-8 h-8 rounded-xl bg-purple-100 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
-                  <HandCoins className="w-4 h-4" />
+                  <AppIcon name="lainnya-hutangpiutang" className="w-5 h-5 text-purple-600 dark:text-purple-400" />
                 </div>
                 <div>
                   <span className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white block">
@@ -1007,7 +951,7 @@ export const ExportLaporanView: React.FC<ExportLaporanViewProps> = ({
                   <CheckSquare className="w-4 h-4" />
                 </div>
                 <div className="w-8 h-8 rounded-xl bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
-                  <ReceiptText className="w-4 h-4" />
+                  <AppIcon name="lainnya-transaksi" className="w-5 h-5 text-amber-600 dark:text-amber-400" />
                 </div>
                 <div>
                   <span className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white block">
@@ -1173,117 +1117,17 @@ export const ExportLaporanView: React.FC<ExportLaporanViewProps> = ({
         </div>
       </div>
 
-      {/* ========================================================================= */}
-      {/* STICKY BOTTOM ACTION BAR (SELALU MUNCUL & TERANG) */}
-      {/* ========================================================================= */}
-      <div className="fixed bottom-0 inset-x-0 z-50 bg-white/95 dark:bg-slate-900/95 backdrop-blur-lg border-t border-slate-200/90 dark:border-slate-800 p-3 sm:p-4 shadow-[0_-6px_25px_rgba(0,0,0,0.12)]">
-        <div className="max-w-lg mx-auto sm:max-w-xl md:max-w-2xl flex items-center gap-2.5">
-          {/* Tombol Preview PDF */}
-          <button
-            type="button"
-            disabled={selectedCount === 0 || isGenerating}
-            onClick={handlePreviewPDF}
-            className="flex items-center justify-center gap-2 py-3.5 px-4 sm:px-5 rounded-2xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 text-xs sm:text-sm font-bold border border-slate-200 dark:border-slate-700 transition-all disabled:opacity-50 cursor-pointer shrink-0"
-            title="Lihat Pratinjau Dokumen PDF"
-          >
-            <Eye className="w-4 h-4 text-sky-600 dark:text-sky-400" />
-            <span>Preview PDF</span>
-          </button>
-
-          {/* Tombol Export PDF */}
-          <button
-            type="button"
-            disabled={selectedCount === 0 || isGenerating}
-            onClick={handleDownloadPDF}
-            className="flex-1 flex items-center justify-center gap-2 py-3.5 px-4 rounded-2xl bg-gradient-to-r from-sky-600 via-blue-600 to-indigo-600 hover:from-sky-500 hover:to-blue-500 text-white font-extrabold text-xs sm:text-sm md:text-base shadow-lg shadow-sky-500/25 active:scale-98 transition-all disabled:opacity-50 cursor-pointer"
-          >
-            {isGenerating ? (
-              <div className="flex items-center gap-2">
-                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                <span>Menyiapkan PDF...</span>
-              </div>
-            ) : (
-              <>
-                <Download className="w-5 h-5 shrink-0" />
-                <span>Export PDF ({selectedCount} Modul)</span>
-              </>
-            )}
-          </button>
-        </div>
-      </div>
 
       {/* ========================================================================= */}
-      {/* MODAL PRATINJAU PDF */}
+      {/* MODAL PRATINJAU PDF BERBASIS CANVAS (KOMPATIBEL ANDROID & iOS CHROME) */}
       {/* ========================================================================= */}
-      {previewBlobUrl && (
-        <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-xs flex flex-col p-2 sm:p-4 animate-in fade-in">
-          <div className="max-w-4xl mx-auto w-full h-full flex flex-col bg-white dark:bg-slate-900 rounded-3xl overflow-hidden shadow-2xl border border-slate-200 dark:border-slate-800">
-            {/* Modal Header */}
-            <div className="px-4 py-3 bg-slate-100 dark:bg-slate-800 flex items-center justify-between border-b border-slate-200 dark:border-slate-700">
-              <div className="flex items-center gap-2">
-                <Eye className="w-4 h-4 text-sky-600 dark:text-sky-400" />
-                <span className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white truncate max-w-[200px] sm:max-w-md">
-                  Preview: {previewFilename}
-                </span>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <a
-                  href={previewBlobUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="hidden sm:inline-flex items-center gap-1.5 py-1.5 px-3 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors"
-                >
-                  Buka Tab Baru
-                </a>
-                <a
-                  href={previewBlobUrl}
-                  download={previewFilename}
-                  className="flex items-center gap-1.5 py-1.5 px-3 rounded-xl bg-sky-600 text-white text-xs font-bold hover:bg-sky-500 transition-colors shadow-xs"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Download PDF</span>
-                </a>
-                <button
-                  type="button"
-                  onClick={closePreview}
-                  className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-
-            {/* Iframe for PDF rendering with fallback */}
-            <div className="flex-1 w-full bg-slate-200 dark:bg-slate-950 p-1 sm:p-2 relative flex flex-col">
-              <iframe
-                src={previewBlobUrl}
-                title="Preview Dokumen PDF Catatin!"
-                className="w-full flex-1 rounded-2xl bg-white shadow-inner"
-              />
-              <div className="mt-1 text-center py-1 text-[11px] text-slate-500 dark:text-slate-400">
-                <span>Jika pratinjau browser tidak muncul, silakan klik tombol </span>
-                <a
-                  href={previewBlobUrl}
-                  download={previewFilename}
-                  className="text-sky-600 dark:text-sky-400 font-bold underline"
-                >
-                  Download PDF
-                </a>
-                <span> atau </span>
-                <a
-                  href={previewBlobUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-sky-600 dark:text-sky-400 font-bold underline"
-                >
-                  Buka di Tab Baru
-                </a>
-                .
-              </div>
-            </div>
-          </div>
-        </div>
+      {previewPdfData && (
+        <PdfCanvasViewer
+          pdfData={previewPdfData}
+          filename={previewFilename}
+          onDownload={handleDownloadPDF}
+          onClose={closePreview}
+        />
       )}
 
       {/* Success Toast */}

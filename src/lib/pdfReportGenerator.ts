@@ -96,7 +96,7 @@ export const generateFinancialPDF = async (
     bills: RecurringBill[];
     debts: DebtItem[];
   }
-): Promise<{ blob: Blob; filename: string }> => {
+): Promise<{ blob: Blob; arrayBuffer: ArrayBuffer; filename: string }> => {
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
@@ -890,5 +890,6 @@ export const generateFinancialPDF = async (
   const filename = `Catatin_Laporan_${cleanStartDate}_sd_${cleanEndDate}.pdf`;
 
   const blob = doc.output('blob');
-  return { blob, filename };
+  const arrayBuffer = doc.output('arraybuffer') as ArrayBuffer;
+  return { blob, arrayBuffer, filename };
 };

@@ -594,13 +594,11 @@ export default function App() {
       {/* ========================================================================= */}
       {/* BOTTOM NAVIGATION BAR DENGAN 4 TAB + TOMBOL (+) MELAYANG DI TENGAH */}
       {/* ========================================================================= */}
-      {currentTab !== 'export' && (
-        <BottomNav
-          currentTab={currentTab}
-          onSelectTab={handleSelectTab}
-          onOpenQuickAdd={() => setIsQuickAddSheetOpen(true)}
-        />
-      )}
+      <BottomNav
+        currentTab={currentTab}
+        onSelectTab={handleSelectTab}
+        onOpenQuickAdd={() => setIsQuickAddSheetOpen(true)}
+      />
 
       {/* Quick Add Action Sheet (Muncul saat tombol (+) di tengah ditekan) */}
       <QuickAddActionSheet
