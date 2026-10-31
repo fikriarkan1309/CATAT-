@@ -36,6 +36,7 @@ import {
   isDevicePinSet,
   shouldAutoLock,
   recordDeviceLeft,
+  recordDeviceActive,
   markPinSetupPrompted,
   getDeviceSecurityConfig,
 } from './lib/deviceSecurity';
@@ -337,23 +338,57 @@ export default function App() {
     isSyncModalOpen,
   ]);
 
-  // Auto-Lock Listener (Visibility Change & Focus)
+  // Auto-Lock Listener (User Activity, Inactivity Heartbeat & Background Detection)
   React.useEffect(() => {
     if (!isAuthenticated) return;
 
+    // Inisialisasi waktu aktif saat mount
+    recordDeviceActive();
+
+    // 1. Deteksi interaksi pengguna (touch, click, scroll, ketik)
+    // Mereset timer idle jika pengguna aktif memakai aplikasi
+    let lastThrottled = 0;
+    const handleUserInteraction = () => {
+      const now = Date.now();
+      if (now - lastThrottled > 2000) {
+        lastThrottled = now;
+        recordDeviceActive(now);
+      }
+    };
+
+    const activityEvents = ['mousedown', 'touchstart', 'touchmove', 'keydown', 'scroll', 'click'];
+    activityEvents.forEach((ev) => {
+      window.addEventListener(ev, handleUserInteraction, { passive: true });
+    });
+
+    // 2. Heartbeat interval setiap 1 detik
+    // Memastikan jika HP dibiarkan diam di meja selama 1 atau 5 menit, aplikasi langsung terkunci otomatis!
+    const intervalTimer = setInterval(() => {
+      if (!isAppLocked && isDevicePinSet()) {
+        if (shouldAutoLock(false)) {
+          setIsAppLocked(true);
+        }
+      }
+    }, 1000);
+
+    // 3. Deteksi saat aplikasi ditinggalkan / diminimize / layar mati
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
         recordDeviceLeft();
       } else if (document.visibilityState === 'visible') {
-        if (shouldAutoLock()) {
+        if (shouldAutoLock(true)) {
           setIsAppLocked(true);
+        } else {
+          recordDeviceActive();
         }
       }
     };
 
     const handleFocus = () => {
-      if (shouldAutoLock()) {
+      if (shouldAutoLock(true)) {
         setIsAppLocked(true);
+      } else {
+        recordDeviceActive();
       }
     };
 
@@ -362,11 +397,15 @@ export default function App() {
     window.addEventListener('pageshow', handleFocus);
 
     return () => {
+      activityEvents.forEach((ev) => {
+        window.removeEventListener(ev, handleUserInteraction);
+      });
+      clearInterval(intervalTimer);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleFocus);
       window.removeEventListener('pageshow', handleFocus);
     };
-  }, [isAuthenticated]);
+  }, [isAuthenticated, isAppLocked]);
 
   // Soft Prompt untuk User Baru (Opsi A)
   React.useEffect(() => {
@@ -810,7 +849,10 @@ export default function App() {
       <SecuritySettingsModal
         isOpen={isSecurityModalOpen}
         onClose={() => setIsSecurityModalOpen(false)}
-        onLockNow={() => setIsAppLocked(true)}
+        onLockNow={() => {
+          recordDeviceLeft(0);
+          setIsAppLocked(true);
+        }}
       />
 
       {/* New User Soft Prompt Modal (Opsi A) */}
@@ -823,7 +865,10 @@ export default function App() {
       {/* App Lock Screen (6-Digit PIN) */}
       {isAppLocked && isDevicePinSet() && (
         <PinLockModal
-          onUnlockSuccess={() => setIsAppLocked(false)}
+          onUnlockSuccess={() => {
+            recordDeviceActive();
+            setIsAppLocked(false);
+          }}
           userEmail={userAccount?.email}
           onVerifyPassword={async (password: string) => {
             const email = userAccount?.email || 'fikriarkan1309@gmail.com';

@@ -117,36 +117,48 @@ export function markPinSetupPrompted(): void {
   saveDeviceSecurityConfig({ hasPromptedPinSetup: true });
 }
 
-export function recordDeviceActive(): void {
+let inMemoryLastActive = Date.now();
+
+export function recordDeviceActive(timestamp = Date.now()): void {
+  inMemoryLastActive = timestamp;
   try {
-    sessionStorage.setItem(STORAGE_KEY_LAST_ACTIVE, Date.now().toString());
+    localStorage.setItem(STORAGE_KEY_LAST_ACTIVE, timestamp.toString());
   } catch {}
 }
 
-export function recordDeviceLeft(): void {
+export function recordDeviceLeft(timestamp = Date.now()): void {
+  inMemoryLastActive = timestamp;
   try {
-    sessionStorage.setItem(STORAGE_KEY_LAST_ACTIVE, Date.now().toString());
+    localStorage.setItem(STORAGE_KEY_LAST_ACTIVE, timestamp.toString());
   } catch {}
 }
 
-export function shouldAutoLock(): boolean {
+export function getLastActiveTimestamp(): number {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_LAST_ACTIVE);
+    if (raw) {
+      const parsed = parseInt(raw, 10);
+      if (!isNaN(parsed) && parsed > 0) {
+        return Math.max(parsed, inMemoryLastActive);
+      }
+    }
+  } catch {}
+  return inMemoryLastActive;
+}
+
+export function shouldAutoLock(isReturningFromBackground = false): boolean {
   const config = getDeviceSecurityConfig();
   if (!config.isPinEnabled || !isDevicePinSet()) {
     return false;
   }
 
-  // If delay is 0, always lock immediately when returning
+  // If delay is 0 ("Langsung"):
+  // Locks immediately when returning from background / tab switch
   if (config.autoLockDelayMinutes === 0) {
-    return true;
+    return isReturningFromBackground;
   }
 
-  try {
-    const raw = sessionStorage.getItem(STORAGE_KEY_LAST_ACTIVE);
-    if (!raw) return true;
-    const lastActive = parseInt(raw, 10);
-    const elapsedMinutes = (Date.now() - lastActive) / (1000 * 60);
-    return elapsedMinutes >= config.autoLockDelayMinutes;
-  } catch {
-    return true;
-  }
+  const lastActive = getLastActiveTimestamp();
+  const elapsedMinutes = (Date.now() - lastActive) / (1000 * 60);
+  return elapsedMinutes >= config.autoLockDelayMinutes;
 }

@@ -15,6 +15,7 @@ import {
   getDeviceSecurityConfig,
   saveDeviceSecurityConfig,
   isDevicePinSet,
+  recordDeviceActive,
   DeviceSecurityConfig,
 } from '../lib/deviceSecurity';
 import { SecurityPinSetupModal, PinSetupMode } from './SecurityPinSetupModal';
@@ -76,6 +77,7 @@ export const SecuritySettingsModal: React.FC<SecuritySettingsModalProps> = ({
   const handleSelectDelay = (minutes: number) => {
     const updated = saveDeviceSecurityConfig({ autoLockDelayMinutes: minutes });
     setConfig(updated);
+    recordDeviceActive();
     showToast(`Waktu kunci otomatis diset ke ${minutes === 0 ? 'Langsung' : `${minutes} Menit`}`);
   };
 
