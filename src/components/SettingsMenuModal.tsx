@@ -9,7 +9,9 @@ import {
   X,
   Settings,
   LogOut,
+  ShieldCheck,
 } from 'lucide-react';
+import { isDevicePinSet } from '../lib/deviceSecurity';
 
 interface SettingsMenuModalProps {
   isOpen: boolean;
@@ -17,6 +19,7 @@ interface SettingsMenuModalProps {
   onOpenDataModal: () => void;
   onOpenCategories: () => void;
   onOpenAccountModal: () => void;
+  onOpenSecurityModal: () => void;
   theme: 'light' | 'dark';
   onToggleTheme: () => void;
   onLogout?: () => void;
@@ -28,6 +31,7 @@ export const SettingsMenuModal: React.FC<SettingsMenuModalProps> = ({
   onOpenDataModal,
   onOpenCategories,
   onOpenAccountModal,
+  onOpenSecurityModal,
   theme,
   onToggleTheme,
   onLogout,
@@ -126,7 +130,43 @@ export const SettingsMenuModal: React.FC<SettingsMenuModalProps> = ({
             <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-200" />
           </button>
 
-          {/* 3. TEMA / DARK MODE TOGGLE */}
+          {/* 3. KEAMANAN & KUNCI PIN */}
+          <button
+            type="button"
+            onClick={() => {
+              onClose();
+              onOpenSecurityModal();
+            }}
+            className="w-full flex items-center justify-between p-2.5 rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-800 text-left transition-colors group"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-xl bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 flex items-center justify-center group-hover:scale-105 transition-transform">
+                <ShieldCheck className="w-4 h-4" />
+              </div>
+              <div>
+                <span className="text-xs font-bold text-slate-900 dark:text-white block">
+                  Keamanan & Kunci PIN
+                </span>
+                <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Kunci aplikasi 6-digit di HP ini
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span
+                className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                  isDevicePinSet()
+                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
+                }`}
+              >
+                {isDevicePinSet() ? 'Aktif' : 'Nonaktif'}
+              </span>
+              <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-200" />
+            </div>
+          </button>
+
+          {/* 4. TEMA / DARK MODE TOGGLE */}
           <button
             type="button"
             onClick={onToggleTheme}

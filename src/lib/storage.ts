@@ -115,87 +115,59 @@ class OfflineStorageEngine {
 
         // 1. Jika session masih berlaku dan belum mendekati masa kedaluwarsa (> 2 menit)
         if (session && session.expires_at && session.expires_at * 1000 > nowMs + 120000) {
-          if (session.user?.id && !this.state.currentUserId) {
+          if (session.user?.id) {
             this.state.currentUserId = session.user.id;
+            this.state.isAuthenticated = true;
           }
           return session;
         }
 
-        // 2. Coba refresh session jika ada session sebelumnya
-        if (session) {
+        // 2. Refresh session resmi Supabase menggunakan Refresh Token kriptografis
+        // Bebas dari plain-text password di perangkat & aman terhadap kebocoran lokal
+        let refreshAttempts = 0;
+        while (refreshAttempts < 2) {
           try {
             const { data: refreshData, error: refreshErr } = await supabase.auth.refreshSession();
             if (!refreshErr && refreshData?.session) {
               session = refreshData.session;
               if (session?.user?.id) {
                 this.state.currentUserId = session.user.id;
+                this.state.isAuthenticated = true;
+                this.state.currentUserEmail = session.user.email || this.state.currentUserEmail;
+                try {
+                  supabase.realtime.setAuth(session.access_token);
+                } catch {}
+                this.persist();
               }
               return session;
+            } else if (refreshErr && refreshErr.message?.toLowerCase().includes('fetch')) {
+              // Jika HP baru bangun dan internet sedang reconnecting, jeda dan coba sekali lagi
+              refreshAttempts++;
+              await new Promise((r) => setTimeout(r, 800));
+            } else {
+              break;
             }
-          } catch (rErr) {
-            console.warn('[Supabase Auth] refreshSession exception:', rErr);
-          }
-        }
-
-        // 3. SILENT AUTO-REAUTHENTICATION:
-        // Solusi utama keluhan "Tiap hari harus logout-login untuk sync".
-        // Saat device dibiarkan standby berjam-jam/semalaman, token Supabase bisa habis.
-        // Pulihkan sesi secara silent di background menggunakan auth vault tersimpan!
-        if (typeof window !== 'undefined') {
-          try {
-            let vaultRaw = localStorage.getItem('keluarga_fin_auth_vault');
-            if (!vaultRaw && this.state.currentUserEmail) {
-              const usersRaw = localStorage.getItem('keluarga_fin_users');
-              if (usersRaw) {
-                const uMap = JSON.parse(usersRaw);
-                const u = uMap[this.state.currentUserEmail];
-                if (u && u.password) {
-                  vaultRaw = JSON.stringify({
-                    email: this.state.currentUserEmail,
-                    password: u.password,
-                    accountName: u.accountName,
-                  });
-                  localStorage.setItem('keluarga_fin_auth_vault', vaultRaw);
-                }
-              }
-            }
-
-            if (vaultRaw) {
-              const vault = JSON.parse(vaultRaw);
-              if (vault.email && vault.password) {
-                console.log('[Supabase Auth] Memulihkan sesi Supabase otomatis di background...');
-                const { data: reAuthData, error: reAuthErr } = await supabase.auth.signInWithPassword({
-                  email: vault.email,
-                  password: vault.password,
-                });
-                if (!reAuthErr && reAuthData?.session) {
-                  console.log('[Supabase Auth] Sesi Supabase pulih secara otomatis! Sync aktif.');
-                  session = reAuthData.session;
-                  this.state.currentUserId = reAuthData.user.id;
-                  this.state.isAuthenticated = true;
-                  this.state.currentUserEmail = vault.email;
-                  this.persist();
-                  return session;
-                }
-              }
-            }
-          } catch (vErr) {
-            console.warn('[Supabase Auth] Auto-reauth exception:', vErr);
+          } catch {
+            refreshAttempts++;
+            await new Promise((r) => setTimeout(r, 800));
           }
         }
 
         // 4. Fallback getUser
-        const { data: userData } = await supabase.auth.getUser();
-        if (userData?.user) {
-          const { data: reSession } = await supabase.auth.getSession();
-          if (reSession?.session) {
-            session = reSession.session;
-            this.state.currentUserId = userData.user.id;
-            return session;
+        try {
+          const { data: userData } = await supabase.auth.getUser();
+          if (userData?.user) {
+            const { data: reSession } = await supabase.auth.getSession();
+            if (reSession?.session) {
+              session = reSession.session;
+              this.state.currentUserId = userData.user.id;
+              this.state.isAuthenticated = true;
+              return session;
+            }
           }
-        }
+        } catch {}
 
-        return session || null;
+        return null;
       } catch (err) {
         console.warn('[Supabase Auth] Verifikasi session gagal:', err);
         return null;
@@ -211,9 +183,46 @@ class OfflineStorageEngine {
     if (this.wakeUpDebounceTimer) {
       clearTimeout(this.wakeUpDebounceTimer);
     }
-    this.wakeUpDebounceTimer = setTimeout(() => {
-      this.syncAndPullActiveUser();
-    }, 300);
+    this.wakeUpDebounceTimer = setTimeout(async () => {
+      // Lepaskan lock sync yang macet saat HP sleep
+      this.isSyncing = false;
+      const supabase = getSupabaseClient();
+      if (supabase && isSupabaseConfigured() && this.isOnline()) {
+        try {
+          const session = await this.getValidSession(supabase);
+          if (session?.user?.id) {
+            // Reconnect realtime subscription dengan token yang baru disegarkan
+            this.reconnectRealtimeSubscription(session.user.id, session.access_token);
+            await this.triggerSync();
+            await this.pullFromSupabase(supabase, session.user.id);
+            this.notify();
+          }
+        } catch (e) {
+          console.warn('[Wakeup Sync] Exception:', e);
+        }
+      }
+    }, 350);
+  }
+
+  public reconnectRealtimeSubscription(userId: string, accessToken?: string) {
+    const supabase = getSupabaseClient();
+    if (!supabase || !userId) return;
+
+    if (accessToken) {
+      try {
+        supabase.realtime.setAuth(accessToken);
+      } catch {}
+    }
+
+    if (this.realtimeChannel) {
+      try {
+        supabase.removeChannel(this.realtimeChannel);
+      } catch {}
+      this.realtimeChannel = null;
+      this.currentSubscribedUserId = null;
+    }
+
+    this.setupRealtimeSubscription(userId);
   }
 
   private async syncAndPull(userId: string) {
@@ -239,22 +248,50 @@ class OfflineStorageEngine {
     }
 
     try {
+      // KRITIS: Hanya sinkronisasi jika ada sesi autentikasi yang valid!
+      // Jangan pernah fallback ke query unauthenticated agar data lokal tidak terhapus akibat RLS!
       const session = await this.getValidSession(supabase);
-      const userId = session?.user?.id || this.state.currentUserId;
-      if (userId) {
-        if (!this.realtimeChannel || this.currentSubscribedUserId !== userId) {
-          this.setupRealtimeSubscription(userId);
-        }
-        await this.triggerSync();
-        await this.pullFromSupabase(supabase, userId);
-        this.notify();
+      if (!session?.user?.id) {
+        return;
       }
+      const userId = session.user.id;
+      if (!this.realtimeChannel || this.currentSubscribedUserId !== userId) {
+        this.setupRealtimeSubscription(userId);
+      }
+      await this.triggerSync();
+      await this.pullFromSupabase(supabase, userId);
+      this.notify();
     } catch (err) {
       console.warn('[Sync] syncAndPullActiveUser exception:', err);
     }
   }
 
+  private purgePlaintextPasswords() {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.removeItem('keluarga_fin_auth_vault');
+      const usersRaw = localStorage.getItem('keluarga_fin_users');
+      if (usersRaw) {
+        const users = JSON.parse(usersRaw);
+        let changed = false;
+        for (const email of Object.keys(users)) {
+          if (users[email]?.password) {
+            delete users[email].password;
+            changed = true;
+          }
+        }
+        if (changed) {
+          localStorage.setItem('keluarga_fin_users', JSON.stringify(users));
+        }
+      }
+      if (this.state.userAccount?.password) {
+        this.state.userAccount.password = '';
+      }
+    } catch {}
+  }
+
   private async init() {
+    this.purgePlaintextPasswords();
     try {
       const activeEmail = localStorage.getItem('keluarga_fin_current_user');
       if (activeEmail) {
@@ -272,7 +309,7 @@ class OfflineStorageEngine {
                     userAccount = {
                       email: activeEmail,
                       accountName: users[activeEmail].accountName,
-                      password: users[activeEmail].password,
+                      password: '',
                       createdAt: users[activeEmail].createdAt || '',
                     };
                   }
@@ -530,7 +567,6 @@ class OfflineStorageEngine {
       const users = usersRaw ? JSON.parse(usersRaw) : {};
       users[cleanEmail] = {
         email: cleanEmail,
-        password: cleanPassword,
         accountName: cleanName,
         createdAt: new Date().toISOString(),
       };
@@ -594,7 +630,7 @@ class OfflineStorageEngine {
       userAccount: {
         accountName: cleanName,
         email: cleanEmail,
-        password: cleanPassword,
+        password: '',
         createdAt: new Date().toISOString(),
       },
       isAuthenticated: true,
@@ -915,21 +951,9 @@ class OfflineStorageEngine {
             this.state.userAccount = {
               accountName,
               email: cleanEmail,
-              password: '••••••••',
+              password: '',
               createdAt: data.user.created_at || new Date().toISOString(),
             };
-
-            try {
-              localStorage.setItem(
-                'keluarga_fin_auth_vault',
-                JSON.stringify({
-                  email: cleanEmail,
-                  password: cleanPassword,
-                  userId: data.user.id,
-                  accountName,
-                })
-              );
-            } catch {}
           } catch {}
 
           this.state.isAuthenticated = true;
@@ -1039,7 +1063,6 @@ class OfflineStorageEngine {
         const users = JSON.parse(usersRaw);
         if (this.state.currentUserEmail && users[this.state.currentUserEmail]) {
           if (updates.accountName) users[this.state.currentUserEmail].accountName = updates.accountName.trim();
-          if (updates.password) users[this.state.currentUserEmail].password = updates.password;
           localStorage.setItem('keluarga_fin_users', JSON.stringify(users));
         }
       }
@@ -1048,19 +1071,26 @@ class OfflineStorageEngine {
     this.persist();
 
     const supabase = getSupabaseClient();
-    if (supabase && isSupabaseConfigured() && this.isOnline() && updates.accountName) {
-      supabase.auth.getSession().then(({ data }) => {
-        if (data?.session?.user) {
-          supabase
-            .from('profiles')
-            .upsert({
-              id: data.session.user.id,
-              account_name: updates.accountName,
-              updated_at: new Date().toISOString(),
-            })
-            .then(() => {});
-        }
-      });
+    if (supabase && isSupabaseConfigured() && this.isOnline()) {
+      if (updates.accountName) {
+        supabase.auth.getSession().then(({ data }) => {
+          if (data?.session?.user) {
+            supabase
+              .from('profiles')
+              .upsert({
+                id: data.session.user.id,
+                account_name: updates.accountName,
+                updated_at: new Date().toISOString(),
+              })
+              .then(() => {});
+          }
+        });
+      }
+      if (updates.password) {
+        supabase.auth.updateUser({ password: updates.password }).catch((err) => {
+          console.warn('[Supabase Auth] Gagal update password:', err);
+        });
+      }
     }
   }
 
@@ -2719,8 +2749,12 @@ class OfflineStorageEngine {
   // --- SUPABASE PULL & PUSH SYNC ENGINE ---
   public async pullFromSupabase(supabase: any, userId: string): Promise<boolean> {
     try {
-      // Pastikan sesi autentikasi segar sebelum menarik data
-      await this.getValidSession(supabase);
+      // KRITIS: Pastikan sesi autentikasi segar sebelum menarik data
+      const session = await this.getValidSession(supabase);
+      if (!session?.user?.id || session.user.id !== userId) {
+        console.warn('[Sync Pull] Sesi belum valid atau user id tidak sesuai. Batalkan pull demi melindungi data lokal!');
+        return false;
+      }
 
       let [accRes, catRes, txnRes, budRes, goalRes, billRes, debtRes] = await Promise.all([
         supabase.from('accounts').select('*').eq('user_id', userId),
@@ -2740,7 +2774,11 @@ class OfflineStorageEngine {
       if (hasJwtError) {
         console.warn('[Sync Pull] Terdeteksi JWT expired saat query, merefresh session Supabase dan mencoba ulang...');
         const refreshedSession = await this.getValidSession(supabase);
-        const retryUserId = refreshedSession?.user?.id || this.state.currentUserId || userId;
+        if (!refreshedSession?.user?.id) {
+          console.warn('[Sync Pull] Gagal merefresh session. Batalkan pull demi keamanan data!');
+          return false;
+        }
+        const retryUserId = refreshedSession.user.id;
         [accRes, catRes, txnRes, budRes, goalRes, billRes, debtRes] = await Promise.all([
           supabase.from('accounts').select('*').eq('user_id', retryUserId),
           supabase.from('categories').select('*').eq('user_id', retryUserId),
@@ -2752,6 +2790,13 @@ class OfflineStorageEngine {
         ]);
       }
 
+      // Jika masih ada error dari query Supabase, jangan lakukan modifikasi data lokal sama sekali!
+      const hasAnyError = [accRes, catRes, txnRes, budRes, goalRes, billRes, debtRes].some((r) => r.error);
+      if (hasAnyError) {
+        console.warn('[Sync Pull] Query Supabase mengalami error. Membatalkan merge untuk menjaga integritas data lokal.');
+        return false;
+      }
+
       const pendingMap = new Map<string, SyncQueueItem>();
       for (const q of this.state.syncQueue) {
         if (q.status === 'pending' || q.status === 'syncing') {
@@ -2759,7 +2804,7 @@ class OfflineStorageEngine {
         }
       }
 
-      // 1. ACCOUNTS MERGE
+      // 1. ACCOUNTS MERGE DENGAN PERLINDUNGAN ANTI-WIPE
       if (accRes.data) {
         const remoteAccs: Account[] = accRes.data.map((r: any) => ({
           id: r.id,
@@ -2780,40 +2825,48 @@ class OfflineStorageEngine {
         const remoteDeletedAccIds = new Set(remoteAccs.filter((a) => a.isDeleted).map((a) => a.id));
         const activeRemoteAccIds = new Set(activeRemoteAccs.map((r) => r.id));
 
-        const accMap = new Map<string, Account>();
-        for (const ra of activeRemoteAccs) {
-          const pending = pendingMap.get(ra.id);
-          if (pending && pending.operation === 'DELETE') continue;
-          if (pending && (pending.operation === 'UPDATE' || pending.operation === 'INSERT')) {
-            accMap.set(ra.id, pending.payload as Account);
-          } else {
-            accMap.set(ra.id, ra);
+        // ANTI-WIPE GUARD: Jika remote kosong padahal lokal memiliki akun dan tidak ada record penghapusan
+        if (activeRemoteAccs.length === 0 && this.state.accounts.length > 0 && remoteDeletedAccIds.size === 0) {
+          console.warn('[Sync Pull] Remote accounts kosong padahal lokal memiliki akun. Menjaga akun lokal tetap aman.');
+          for (const la of this.state.accounts) {
+            this.queueAccountUpsert(la);
           }
-        }
-
-        for (const la of this.state.accounts) {
-          if (la.isDeleted || remoteDeletedAccIds.has(la.id)) continue;
-          const pending = pendingMap.get(la.id);
-          if (pending && pending.operation === 'DELETE') continue;
-
-          if (activeRemoteAccIds.has(la.id)) {
-            if (pending) {
-              accMap.set(la.id, pending.payload as Account);
+        } else {
+          const accMap = new Map<string, Account>();
+          for (const ra of activeRemoteAccs) {
+            const pending = pendingMap.get(ra.id);
+            if (pending && pending.operation === 'DELETE') continue;
+            if (pending && (pending.operation === 'UPDATE' || pending.operation === 'INSERT')) {
+              accMap.set(ra.id, pending.payload as Account);
+            } else {
+              accMap.set(ra.id, ra);
             }
-          } else {
-            const hasPendingInsert = this.state.syncQueue.some(
-              (q) =>
-                q.entityTable === 'accounts' &&
-                q.entityId === la.id &&
-                q.operation === 'INSERT' &&
-                (q.status === 'pending' || q.status === 'syncing')
-            );
-            if (hasPendingInsert) {
+          }
+
+          for (const la of this.state.accounts) {
+            if (la.isDeleted || remoteDeletedAccIds.has(la.id)) continue;
+            const pending = pendingMap.get(la.id);
+            if (pending && pending.operation === 'DELETE') continue;
+
+            if (activeRemoteAccIds.has(la.id)) {
+              if (pending) {
+                accMap.set(la.id, pending.payload as Account);
+              }
+            } else {
+              // Pertahankan akun lokal yang belum tersinkron ke remote!
               accMap.set(la.id, la);
+              const hasPending = this.state.syncQueue.some(
+                (q) => q.entityTable === 'accounts' && q.entityId === la.id
+              );
+              if (!hasPending) {
+                this.queueAccountUpsert(la);
+              }
             }
           }
+          if (accMap.size > 0 || this.state.accounts.length === 0) {
+            this.state.accounts = Array.from(accMap.values());
+          }
         }
-        this.state.accounts = Array.from(accMap.values());
       }
 
       // 2. CATEGORIES MERGE
@@ -2834,43 +2887,40 @@ class OfflineStorageEngine {
         const remoteDeletedCatIds = new Set(remoteCats.filter((c) => c.isDeleted).map((c) => c.id));
         const activeRemoteCatIds = new Set(activeRemoteCats.map((r) => r.id));
 
-        const catMap = new Map<string, Category>();
-        for (const rc of activeRemoteCats) {
-          const pending = pendingMap.get(rc.id);
-          if (pending && pending.operation === 'DELETE') continue;
-          if (pending && (pending.operation === 'UPDATE' || pending.operation === 'INSERT')) {
-            catMap.set(rc.id, pending.payload as Category);
-          } else {
-            catMap.set(rc.id, rc);
-          }
-        }
-
-        for (const lc of this.state.categories) {
-          if (lc.isDeleted || remoteDeletedCatIds.has(lc.id)) continue;
-          const pending = pendingMap.get(lc.id);
-          if (pending && pending.operation === 'DELETE') continue;
-
-          if (activeRemoteCatIds.has(lc.id)) {
-            if (pending) {
-              catMap.set(lc.id, pending.payload as Category);
+        if (activeRemoteCats.length === 0 && this.state.categories.length > 0 && remoteDeletedCatIds.size === 0) {
+          console.warn('[Sync Pull] Remote categories kosong. Mempertahankan kategori lokal.');
+        } else {
+          const catMap = new Map<string, Category>();
+          for (const rc of activeRemoteCats) {
+            const pending = pendingMap.get(rc.id);
+            if (pending && pending.operation === 'DELETE') continue;
+            if (pending && (pending.operation === 'UPDATE' || pending.operation === 'INSERT')) {
+              catMap.set(rc.id, pending.payload as Category);
+            } else {
+              catMap.set(rc.id, rc);
             }
-          } else {
-            const hasPendingInsert = this.state.syncQueue.some(
-              (q) =>
-                q.entityTable === 'categories' &&
-                q.entityId === lc.id &&
-                q.operation === 'INSERT' &&
-                (q.status === 'pending' || q.status === 'syncing')
-            );
-            if (hasPendingInsert) {
+          }
+
+          for (const lc of this.state.categories) {
+            if (lc.isDeleted || remoteDeletedCatIds.has(lc.id)) continue;
+            const pending = pendingMap.get(lc.id);
+            if (pending && pending.operation === 'DELETE') continue;
+
+            if (activeRemoteCatIds.has(lc.id)) {
+              if (pending) {
+                catMap.set(lc.id, pending.payload as Category);
+              }
+            } else {
               catMap.set(lc.id, lc);
             }
           }
+          if (catMap.size > 0 || this.state.categories.length === 0) {
+            this.state.categories = Array.from(catMap.values());
+          }
         }
-        this.state.categories = Array.from(catMap.values());
       }
 
-      // 3. TRANSACTIONS MERGE
+      // 3. TRANSACTIONS MERGE DENGAN PERLINDUNGAN ANTI-WIPE
       if (txnRes.data) {
         const remoteTxs: Transaction[] = txnRes.data.map((r: any) => ({
           id: r.id,
@@ -2898,43 +2948,57 @@ class OfflineStorageEngine {
         const remoteDeletedTxIds = new Set(remoteTxs.filter((t) => t.isDeleted).map((t) => t.id));
         const activeRemoteTxIds = new Set(activeRemoteTxs.map((r) => r.id));
 
-        const txMap = new Map<string, Transaction>();
-        for (const rt of activeRemoteTxs) {
-          const pending = pendingMap.get(rt.id);
-          if (pending && pending.operation === 'DELETE') continue;
-          if (pending && (pending.operation === 'UPDATE' || pending.operation === 'INSERT')) {
-            txMap.set(rt.id, pending.payload as Transaction);
-          } else {
-            txMap.set(rt.id, rt);
-          }
-        }
-
-        for (const lt of this.state.transactions) {
-          if (lt.isDeleted || remoteDeletedTxIds.has(lt.id)) continue;
-          const pending = pendingMap.get(lt.id);
-          if (pending && pending.operation === 'DELETE') continue;
-
-          if (activeRemoteTxIds.has(lt.id)) {
-            if (pending) {
-              txMap.set(lt.id, pending.payload as Transaction);
+        // ANTI-WIPE GUARD: Jika remote transactions kosong padahal lokal memiliki transaksi
+        if (activeRemoteTxs.length === 0 && this.state.transactions.length > 0 && remoteDeletedTxIds.size === 0) {
+          console.warn('[Sync Pull] Remote transactions kosong padahal lokal memiliki transaksi. Melindungi data lokal.');
+        } else {
+          const txMap = new Map<string, Transaction>();
+          for (const rt of activeRemoteTxs) {
+            const pending = pendingMap.get(rt.id);
+            if (pending && pending.operation === 'DELETE') continue;
+            if (pending && (pending.operation === 'UPDATE' || pending.operation === 'INSERT')) {
+              txMap.set(rt.id, pending.payload as Transaction);
+            } else {
+              txMap.set(rt.id, rt);
             }
-          } else {
-            const hasPendingInsert = this.state.syncQueue.some(
-              (q) =>
-                q.entityTable === 'transactions' &&
-                q.entityId === lt.id &&
-                q.operation === 'INSERT' &&
-                (q.status === 'pending' || q.status === 'syncing')
-            );
-            if (hasPendingInsert) {
+          }
+
+          for (const lt of this.state.transactions) {
+            if (lt.isDeleted || remoteDeletedTxIds.has(lt.id)) continue;
+            const pending = pendingMap.get(lt.id);
+            if (pending && pending.operation === 'DELETE') continue;
+
+            if (activeRemoteTxIds.has(lt.id)) {
+              if (pending) {
+                txMap.set(lt.id, pending.payload as Transaction);
+              }
+            } else {
+              // Pertahankan transaksi lokal yang belum ter-upload!
               txMap.set(lt.id, lt);
+              const hasPending = this.state.syncQueue.some(
+                (q) => q.entityTable === 'transactions' && q.entityId === lt.id
+              );
+              if (!hasPending) {
+                this.state.syncQueue.push({
+                  id: this.generateUUID(),
+                  entityTable: 'transactions',
+                  entityId: lt.id,
+                  operation: 'INSERT',
+                  payload: lt,
+                  clientTimestamp: new Date().toISOString(),
+                  status: 'pending',
+                  retryCount: 0,
+                });
+              }
             }
           }
+          if (txMap.size > 0 || this.state.transactions.length === 0) {
+            this.state.transactions = this.sortTransactions(Array.from(txMap.values()));
+          }
         }
-        this.state.transactions = this.sortTransactions(Array.from(txMap.values()));
       }
 
-      // 4. BUDGETS MERGE
+      // 4. BUDGETS MERGE DENGAN PERLINDUNGAN ANTI-WIPE
       if (budRes.data) {
         const remoteBudgets: Budget[] = budRes.data.map((r: any) => ({
           id: r.id,
@@ -2956,43 +3020,40 @@ class OfflineStorageEngine {
         const remoteDeletedBudIds = new Set(remoteBudgets.filter((b) => b.isDeleted).map((b) => b.id));
         const activeRemoteBudIds = new Set(activeRemoteBudgets.map((r) => r.id));
 
-        const bMap = new Map<string, Budget>();
-        for (const rb of activeRemoteBudgets) {
-          const pending = pendingMap.get(rb.id);
-          if (pending && pending.operation === 'DELETE') continue;
-          if (pending && (pending.operation === 'UPDATE' || pending.operation === 'INSERT')) {
-            bMap.set(rb.id, pending.payload as Budget);
-          } else {
-            bMap.set(rb.id, rb);
-          }
-        }
-
-        for (const lb of this.state.budgets) {
-          if (lb.isDeleted || remoteDeletedBudIds.has(lb.id)) continue;
-          const pending = pendingMap.get(lb.id);
-          if (pending && pending.operation === 'DELETE') continue;
-
-          if (activeRemoteBudIds.has(lb.id)) {
-            if (pending) {
-              bMap.set(lb.id, pending.payload as Budget);
+        if (activeRemoteBudgets.length === 0 && this.state.budgets.length > 0 && remoteDeletedBudIds.size === 0) {
+          console.warn('[Sync Pull] Remote budgets kosong. Mempertahankan anggaran lokal.');
+        } else {
+          const bMap = new Map<string, Budget>();
+          for (const rb of activeRemoteBudgets) {
+            const pending = pendingMap.get(rb.id);
+            if (pending && pending.operation === 'DELETE') continue;
+            if (pending && (pending.operation === 'UPDATE' || pending.operation === 'INSERT')) {
+              bMap.set(rb.id, pending.payload as Budget);
+            } else {
+              bMap.set(rb.id, rb);
             }
-          } else {
-            const hasPendingInsert = this.state.syncQueue.some(
-              (q) =>
-                q.entityTable === 'budgets' &&
-                q.entityId === lb.id &&
-                q.operation === 'INSERT' &&
-                (q.status === 'pending' || q.status === 'syncing')
-            );
-            if (hasPendingInsert) {
+          }
+
+          for (const lb of this.state.budgets) {
+            if (lb.isDeleted || remoteDeletedBudIds.has(lb.id)) continue;
+            const pending = pendingMap.get(lb.id);
+            if (pending && pending.operation === 'DELETE') continue;
+
+            if (activeRemoteBudIds.has(lb.id)) {
+              if (pending) {
+                bMap.set(lb.id, pending.payload as Budget);
+              }
+            } else {
               bMap.set(lb.id, lb);
             }
           }
+          if (bMap.size > 0 || this.state.budgets.length === 0) {
+            this.state.budgets = Array.from(bMap.values());
+          }
         }
-        this.state.budgets = Array.from(bMap.values());
       }
 
-      // 5. GOALS MERGE
+      // 5. GOALS MERGE DENGAN PERLINDUNGAN ANTI-WIPE
       if (goalRes.data) {
         const remoteGoals: SharedGoal[] = goalRes.data.map((r: any) => ({
           id: r.id,
@@ -3013,43 +3074,40 @@ class OfflineStorageEngine {
         const remoteDeletedGoalIds = new Set(remoteGoals.filter((g) => g.isDeleted).map((g) => g.id));
         const activeRemoteGoalIds = new Set(activeRemoteGoals.map((r) => r.id));
 
-        const gMap = new Map<string, SharedGoal>();
-        for (const rg of activeRemoteGoals) {
-          const pending = pendingMap.get(rg.id);
-          if (pending && pending.operation === 'DELETE') continue;
-          if (pending && (pending.operation === 'UPDATE' || pending.operation === 'INSERT')) {
-            gMap.set(rg.id, pending.payload as SharedGoal);
-          } else {
-            gMap.set(rg.id, rg);
-          }
-        }
-
-        for (const lg of this.state.goals) {
-          if (lg.isDeleted || remoteDeletedGoalIds.has(lg.id)) continue;
-          const pending = pendingMap.get(lg.id);
-          if (pending && pending.operation === 'DELETE') continue;
-
-          if (activeRemoteGoalIds.has(lg.id)) {
-            if (pending) {
-              gMap.set(lg.id, pending.payload as SharedGoal);
+        if (activeRemoteGoals.length === 0 && this.state.goals.length > 0 && remoteDeletedGoalIds.size === 0) {
+          console.warn('[Sync Pull] Remote goals kosong. Mempertahankan target tabungan lokal.');
+        } else {
+          const gMap = new Map<string, SharedGoal>();
+          for (const rg of activeRemoteGoals) {
+            const pending = pendingMap.get(rg.id);
+            if (pending && pending.operation === 'DELETE') continue;
+            if (pending && (pending.operation === 'UPDATE' || pending.operation === 'INSERT')) {
+              gMap.set(rg.id, pending.payload as SharedGoal);
+            } else {
+              gMap.set(rg.id, rg);
             }
-          } else {
-            const hasPendingInsert = this.state.syncQueue.some(
-              (q) =>
-                q.entityTable === 'goals' &&
-                q.entityId === lg.id &&
-                q.operation === 'INSERT' &&
-                (q.status === 'pending' || q.status === 'syncing')
-            );
-            if (hasPendingInsert) {
+          }
+
+          for (const lg of this.state.goals) {
+            if (lg.isDeleted || remoteDeletedGoalIds.has(lg.id)) continue;
+            const pending = pendingMap.get(lg.id);
+            if (pending && pending.operation === 'DELETE') continue;
+
+            if (activeRemoteGoalIds.has(lg.id)) {
+              if (pending) {
+                gMap.set(lg.id, pending.payload as SharedGoal);
+              }
+            } else {
               gMap.set(lg.id, lg);
             }
           }
+          if (gMap.size > 0 || this.state.goals.length === 0) {
+            this.state.goals = Array.from(gMap.values());
+          }
         }
-        this.state.goals = Array.from(gMap.values());
       }
 
-      // 6. BILLS MERGE
+      // 6. BILLS MERGE DENGAN PERLINDUNGAN ANTI-WIPE
       if (billRes.data) {
         const remoteBills: RecurringBill[] = billRes.data.map((r: any) => ({
           id: r.id,
@@ -3073,43 +3131,40 @@ class OfflineStorageEngine {
         const remoteDeletedBillIds = new Set(remoteBills.filter((b) => b.isDeleted).map((b) => b.id));
         const activeRemoteBillIds = new Set(activeRemoteBills.map((r) => r.id));
 
-        const billMap = new Map<string, RecurringBill>();
-        for (const rBill of activeRemoteBills) {
-          const pending = pendingMap.get(rBill.id);
-          if (pending && pending.operation === 'DELETE') continue;
-          if (pending && (pending.operation === 'UPDATE' || pending.operation === 'INSERT')) {
-            billMap.set(rBill.id, pending.payload as RecurringBill);
-          } else {
-            billMap.set(rBill.id, rBill);
-          }
-        }
-
-        for (const lBill of this.state.bills) {
-          if (lBill.isDeleted || remoteDeletedBillIds.has(lBill.id)) continue;
-          const pending = pendingMap.get(lBill.id);
-          if (pending && pending.operation === 'DELETE') continue;
-
-          if (activeRemoteBillIds.has(lBill.id)) {
-            if (pending) {
-              billMap.set(lBill.id, pending.payload as RecurringBill);
+        if (activeRemoteBills.length === 0 && this.state.bills.length > 0 && remoteDeletedBillIds.size === 0) {
+          console.warn('[Sync Pull] Remote bills kosong. Mempertahankan tagihan rutin lokal.');
+        } else {
+          const billMap = new Map<string, RecurringBill>();
+          for (const rBill of activeRemoteBills) {
+            const pending = pendingMap.get(rBill.id);
+            if (pending && pending.operation === 'DELETE') continue;
+            if (pending && (pending.operation === 'UPDATE' || pending.operation === 'INSERT')) {
+              billMap.set(rBill.id, pending.payload as RecurringBill);
+            } else {
+              billMap.set(rBill.id, rBill);
             }
-          } else {
-            const hasPendingInsert = this.state.syncQueue.some(
-              (q) =>
-                q.entityTable === 'bills' &&
-                q.entityId === lBill.id &&
-                q.operation === 'INSERT' &&
-                (q.status === 'pending' || q.status === 'syncing')
-            );
-            if (hasPendingInsert) {
+          }
+
+          for (const lBill of this.state.bills) {
+            if (lBill.isDeleted || remoteDeletedBillIds.has(lBill.id)) continue;
+            const pending = pendingMap.get(lBill.id);
+            if (pending && pending.operation === 'DELETE') continue;
+
+            if (activeRemoteBillIds.has(lBill.id)) {
+              if (pending) {
+                billMap.set(lBill.id, pending.payload as RecurringBill);
+              }
+            } else {
               billMap.set(lBill.id, lBill);
             }
           }
+          if (billMap.size > 0 || this.state.bills.length === 0) {
+            this.state.bills = Array.from(billMap.values());
+          }
         }
-        this.state.bills = Array.from(billMap.values());
       }
 
-      // 7. DEBTS MERGE
+      // 7. DEBTS MERGE DENGAN PERLINDUNGAN ANTI-WIPE
       if (debtRes.data) {
         const remoteDebts: DebtItem[] = debtRes.data.map((r: any) => ({
           id: r.id,
@@ -3133,40 +3188,37 @@ class OfflineStorageEngine {
         const remoteDeletedDebtIds = new Set(remoteDebts.filter((d) => d.isDeleted).map((d) => d.id));
         const activeRemoteDebtIds = new Set(activeRemoteDebts.map((r) => r.id));
 
-        const dMap = new Map<string, DebtItem>();
-        for (const rd of activeRemoteDebts) {
-          const pending = pendingMap.get(rd.id);
-          if (pending && pending.operation === 'DELETE') continue;
-          if (pending && (pending.operation === 'UPDATE' || pending.operation === 'INSERT')) {
-            dMap.set(rd.id, pending.payload as DebtItem);
-          } else {
-            dMap.set(rd.id, rd);
-          }
-        }
-
-        for (const ld of this.state.debts) {
-          if (ld.isDeleted || remoteDeletedDebtIds.has(ld.id)) continue;
-          const pending = pendingMap.get(ld.id);
-          if (pending && pending.operation === 'DELETE') continue;
-
-          if (activeRemoteDebtIds.has(ld.id)) {
-            if (pending) {
-              dMap.set(ld.id, pending.payload as DebtItem);
+        if (activeRemoteDebts.length === 0 && this.state.debts.length > 0 && remoteDeletedDebtIds.size === 0) {
+          console.warn('[Sync Pull] Remote debts kosong. Mempertahankan hutang/piutang lokal.');
+        } else {
+          const dMap = new Map<string, DebtItem>();
+          for (const rd of activeRemoteDebts) {
+            const pending = pendingMap.get(rd.id);
+            if (pending && pending.operation === 'DELETE') continue;
+            if (pending && (pending.operation === 'UPDATE' || pending.operation === 'INSERT')) {
+              dMap.set(rd.id, pending.payload as DebtItem);
+            } else {
+              dMap.set(rd.id, rd);
             }
-          } else {
-            const hasPendingInsert = this.state.syncQueue.some(
-              (q) =>
-                q.entityTable === 'debts' &&
-                q.entityId === ld.id &&
-                q.operation === 'INSERT' &&
-                (q.status === 'pending' || q.status === 'syncing')
-            );
-            if (hasPendingInsert) {
+          }
+
+          for (const ld of this.state.debts) {
+            if (ld.isDeleted || remoteDeletedDebtIds.has(ld.id)) continue;
+            const pending = pendingMap.get(ld.id);
+            if (pending && pending.operation === 'DELETE') continue;
+
+            if (activeRemoteDebtIds.has(ld.id)) {
+              if (pending) {
+                dMap.set(ld.id, pending.payload as DebtItem);
+              }
+            } else {
               dMap.set(ld.id, ld);
             }
           }
+          if (dMap.size > 0 || this.state.debts.length === 0) {
+            this.state.debts = Array.from(dMap.values());
+          }
         }
-        this.state.debts = Array.from(dMap.values());
       }
 
       // Rekonsiliasi pembayaran tagihan & kalkulasi ulang saldo rekening agar sinkron di semua device

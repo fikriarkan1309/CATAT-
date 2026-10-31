@@ -29,6 +29,16 @@ import { SettingsMenuModal } from './components/SettingsMenuModal';
 import { DataBackupModal } from './components/DataBackupModal';
 import { UserAccountModal } from './components/UserAccountModal';
 import { AuthLoginScreen } from './components/AuthLoginScreen';
+import { PinLockModal } from './components/PinLockModal';
+import { SecuritySettingsModal } from './components/SecuritySettingsModal';
+import { NewUserPinPromptModal } from './components/NewUserPinPromptModal';
+import {
+  isDevicePinSet,
+  shouldAutoLock,
+  recordDeviceLeft,
+  markPinSetupPrompted,
+  getDeviceSecurityConfig,
+} from './lib/deviceSecurity';
 import { Account, Budget, Transaction, TransactionType } from './types/finance';
 import { ArrowLeft } from 'lucide-react';
 
@@ -101,6 +111,9 @@ export default function App() {
   const [isSettingsMenuOpen, setIsSettingsMenuOpen] = useState(false);
   const [isDataModalOpen, setIsDataModalOpen] = useState(false);
   const [isUserAccountModalOpen, setIsUserAccountModalOpen] = useState(false);
+  const [isSecurityModalOpen, setIsSecurityModalOpen] = useState(false);
+  const [isAppLocked, setIsAppLocked] = useState<boolean>(() => isDevicePinSet());
+  const [isNewUserPinPromptOpen, setIsNewUserPinPromptOpen] = useState(false);
 
   // Transaction Modal State
   const [isTxnModalOpen, setIsTxnModalOpen] = useState(false);
@@ -265,6 +278,8 @@ export default function App() {
         isSettingsMenuOpen ||
         isDataModalOpen ||
         isUserAccountModalOpen ||
+        isSecurityModalOpen ||
+        isNewUserPinPromptOpen ||
         isSyncModalOpen;
 
       if (isModalOpen) {
@@ -276,6 +291,8 @@ export default function App() {
         setIsSettingsMenuOpen(false);
         setIsDataModalOpen(false);
         setIsUserAccountModalOpen(false);
+        setIsSecurityModalOpen(false);
+        setIsNewUserPinPromptOpen(false);
         setIsSyncModalOpen(false);
         window.history.pushState(
           { tab: currentTab, level: LEVEL_3_TABS.includes(currentTab) ? 3 : LEVEL_2_TABS.includes(currentTab) ? 2 : 1 },
@@ -315,8 +332,66 @@ export default function App() {
     isSettingsMenuOpen,
     isDataModalOpen,
     isUserAccountModalOpen,
+    isSecurityModalOpen,
+    isNewUserPinPromptOpen,
     isSyncModalOpen,
   ]);
+
+  // Auto-Lock Listener (Visibility Change & Focus)
+  React.useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        recordDeviceLeft();
+      } else if (document.visibilityState === 'visible') {
+        if (shouldAutoLock()) {
+          setIsAppLocked(true);
+        }
+      }
+    };
+
+    const handleFocus = () => {
+      if (shouldAutoLock()) {
+        setIsAppLocked(true);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('pageshow', handleFocus);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('pageshow', handleFocus);
+    };
+  }, [isAuthenticated]);
+
+  // Soft Prompt untuk User Baru (Opsi A)
+  React.useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const conf = getDeviceSecurityConfig();
+    // Jika PIN belum diset dan belum pernah ditawari setup PIN
+    if (!isDevicePinSet() && !conf.hasPromptedPinSetup) {
+      const timer = setTimeout(() => {
+        setIsNewUserPinPromptOpen(true);
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [isAuthenticated]);
+
+  const handleStartNewUserPinSetup = () => {
+    markPinSetupPrompted();
+    setIsNewUserPinPromptOpen(false);
+    setIsSecurityModalOpen(true);
+  };
+
+  const handleDismissNewUserPinPrompt = () => {
+    markPinSetupPrompted();
+    setIsNewUserPinPromptOpen(false);
+  };
 
   if (!isAuthenticated) {
     return (
@@ -725,10 +800,37 @@ export default function App() {
         onOpenDataModal={() => setIsDataModalOpen(true)}
         onOpenCategories={() => handleSelectTab('categories')}
         onOpenAccountModal={() => setIsUserAccountModalOpen(true)}
+        onOpenSecurityModal={() => setIsSecurityModalOpen(true)}
         theme={theme}
         onToggleTheme={toggleTheme}
         onLogout={logout}
       />
+
+      {/* Keamanan & Kunci PIN Modal */}
+      <SecuritySettingsModal
+        isOpen={isSecurityModalOpen}
+        onClose={() => setIsSecurityModalOpen(false)}
+        onLockNow={() => setIsAppLocked(true)}
+      />
+
+      {/* New User Soft Prompt Modal (Opsi A) */}
+      <NewUserPinPromptModal
+        isOpen={isNewUserPinPromptOpen}
+        onDismiss={handleDismissNewUserPinPrompt}
+        onStartSetup={handleStartNewUserPinSetup}
+      />
+
+      {/* App Lock Screen (6-Digit PIN) */}
+      {isAppLocked && isDevicePinSet() && (
+        <PinLockModal
+          onUnlockSuccess={() => setIsAppLocked(false)}
+          userEmail={userAccount?.email}
+          onVerifyPassword={async (password: string) => {
+            const email = userAccount?.email || 'fikriarkan1309@gmail.com';
+            return login(email, password);
+          }}
+        />
+      )}
 
       {/* Data & Backup Modal */}
       <DataBackupModal
