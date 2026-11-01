@@ -1,0 +1,153 @@
+import express from 'express';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { createServer as createViteServer } from 'vite';
+import { GoogleGenAI } from '@google/genai';
+import dotenv from 'dotenv';
+
+dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+async function startServer() {
+  const app = express();
+  const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+
+  // Support base64 image uploads up to 25MB
+  app.use(express.json({ limit: '25mb' }));
+
+  // Health check
+  app.get('/api/health', (_req, res) => {
+    res.json({
+      status: 'ok',
+      hasGeminiKey: Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.length > 5),
+    });
+  });
+
+  // Gemini Receipt Scanner Endpoint
+  app.post('/api/scan-receipt', async (req, res) => {
+    try {
+      const { imageBase64, mimeType = 'image/jpeg', existingCategories = [] } = req.body;
+
+      if (!imageBase64) {
+        return res.status(400).json({
+          success: false,
+          error: 'Foto struk tidak ditemukan. Silakan kirim data gambar base64.',
+        });
+      }
+
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey || apiKey === 'MY_GEMINI_API_KEY' || apiKey.trim().length === 0) {
+        return res.status(400).json({
+          success: false,
+          errorCode: 'MISSING_API_KEY',
+          error: 'GEMINI_API_KEY belum dikonfigurasi di .env server.',
+        });
+      }
+
+      // Initialize official GoogleGenAI SDK
+      const ai = new GoogleGenAI({ apiKey });
+
+      // Clean base64 string if it contains data URI prefix
+      const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, '');
+
+      const categoryNames = existingCategories.map((c: any) => c.name).join(', ');
+
+      const systemPrompt = `Kamu adalah asisten keuangan pintar untuk aplikasi Catatin! Tugasmu adalah menganalisis foto struk / nota belanja dan mengekstrak informasinya menjadi format JSON yang sangat akurat.
+
+Berikut daftar kategori yang tersedia di aplikasi pengguna:
+[${categoryNames || 'Makanan & Minuman, Kebutuhan Pokok & Dapur, Transportasi, Kesehatan & Perawatan, Hiburan & Rekreasi, Tagihan & Utilitas, Belanja Lain-lain'}]
+
+Ekstrak informasi berikut:
+1. "merchant": Nama toko / tempat belanja / vendor (contoh: "Indomaret", "Superindo", "SPBU Pertamina", "Apotek K-24"). Jika tidak jelas, gunakan nama umum seperti "Minimarket / Toko".
+2. "totalAmount": Total nominal belanja akhir yang harus dibayar (angka integer rupiah, setelah diskon dan pajak).
+3. "transactionDate": Tanggal dan jam transaksi yang tertera pada struk dalam format ISO (YYYY-MM-DDTHH:mm:ss). Jika jam tidak ada, gunakan jam saat ini. Jika tanggal tidak ada atau buram, gunakan tanggal hari ini.
+4. "categoryName": Pilih satu nama kategori yang paling cocok dari daftar kategori yang disediakan di atas.
+5. "items": Daftar barang yang dibeli (array of object: { name: string, qty?: number, price?: number }).
+6. "summaryNotes": Ringkasan pendek barang-barang utama yang dibeli (contoh: "Minyak 2L, Beras 5kg, Telur 1kg").
+7. "confidence": Tingkat keyakinan bacaan (angka 0.0 sampai 1.0).
+
+Wajib menghasilkan format JSON murni.`;
+
+      const response = await ai.models.generateContent({
+        model: process.env.GEMINI_MODEL || 'gemini-3.8-flash',
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                inlineData: {
+                  mimeType: mimeType || 'image/jpeg',
+                  data: cleanBase64,
+                },
+              },
+              {
+                text: 'Silakan baca struk belanja ini dan ekstrak datanya dalam format JSON sesuai instruksi.',
+              },
+            ],
+          },
+        ],
+        config: {
+          systemInstruction: systemPrompt,
+          responseMimeType: 'application/json',
+          temperature: 0.1,
+        },
+      });
+
+      const responseText = response.text?.trim() || '{}';
+      let parsedData: any = {};
+      try {
+        parsedData = JSON.parse(responseText);
+      } catch (jsonErr) {
+        // Fallback cleanup if response contains markdown
+        const cleaned = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+        parsedData = JSON.parse(cleaned);
+      }
+
+      return res.json({
+        success: true,
+        data: {
+          merchant: parsedData.merchant || 'Struk Belanja',
+          totalAmount: Number(parsedData.totalAmount) || 0,
+          transactionDate: parsedData.transactionDate || new Date().toISOString(),
+          categoryName: parsedData.categoryName || '',
+          items: parsedData.items || [],
+          summaryNotes: parsedData.summaryNotes || parsedData.merchant || '',
+          confidence: parsedData.confidence || 0.9,
+        },
+      });
+    } catch (err: any) {
+      console.error('[Gemini API] Error scanning receipt:', err);
+      return res.status(500).json({
+        success: false,
+        error: err?.message || 'Terjadi kesalahan saat memproses gambar dengan Gemini AI.',
+      });
+    }
+  });
+
+  // Mount Vite middleware in development mode
+  const isProduction = process.env.NODE_ENV === 'production';
+  if (!isProduction) {
+    const vite = await createViteServer({
+      server: {
+        middlewareMode: true,
+        hmr: process.env.DISABLE_HMR !== 'true',
+        watch: process.env.DISABLE_HMR === 'true' ? null : {},
+      },
+      appType: 'spa',
+    });
+    app.use(vite.middlewares);
+  } else {
+    app.use(express.static(path.resolve(__dirname, 'dist')));
+    app.get('*', (_req, res) => {
+      res.sendFile(path.resolve(__dirname, 'dist', 'index.html'));
+    });
+  }
+
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Catatin! Server running on http://0.0.0.0:${PORT}`);
+  });
+}
+
+startServer();

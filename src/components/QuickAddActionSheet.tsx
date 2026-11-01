@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, Minus, ArrowLeftRight, X } from 'lucide-react';
+import { Plus, Minus, ArrowLeftRight, X, Camera } from 'lucide-react';
 
 interface QuickAddActionSheetProps {
   isOpen: boolean;
@@ -7,6 +7,7 @@ interface QuickAddActionSheetProps {
   onSelectIncome: () => void;
   onSelectExpense: () => void;
   onSelectTransfer: () => void;
+  onSelectScanReceipt: () => void;
 }
 
 export const QuickAddActionSheet: React.FC<QuickAddActionSheetProps> = ({
@@ -15,6 +16,7 @@ export const QuickAddActionSheet: React.FC<QuickAddActionSheetProps> = ({
   onSelectIncome,
   onSelectExpense,
   onSelectTransfer,
+  onSelectScanReceipt,
 }) => {
   if (!isOpen) return null;
 
@@ -42,8 +44,35 @@ export const QuickAddActionSheet: React.FC<QuickAddActionSheetProps> = ({
             </button>
           </div>
 
-          {/* 3 Action Buttons */}
+          {/* 4 Action Buttons */}
           <div className="space-y-2">
+            {/* Scan Struk Belanja (AI) - Button baru bersama pengeluaran, pemasukan, transfer */}
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                onSelectScanReceipt();
+              }}
+              className="w-full flex items-center justify-between p-3 rounded-2xl bg-gradient-to-r from-sky-50 via-indigo-50 to-blue-50 dark:from-sky-950/40 dark:via-indigo-950/40 dark:to-blue-950/40 hover:from-sky-100 hover:to-indigo-100 dark:hover:from-sky-950/70 dark:hover:to-indigo-950/70 border border-sky-200/80 dark:border-indigo-900/50 text-indigo-700 dark:text-indigo-300 transition-all active:scale-98 group text-left cursor-pointer shadow-2xs"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-500 to-indigo-600 text-white flex items-center justify-center shadow-xs">
+                  <Camera className="w-5 h-5 stroke-[2.2]" />
+                </div>
+                <div>
+                  <div className="font-extrabold text-sm text-slate-900 dark:text-white flex items-center gap-1.5">
+                    <span>Scan Struk Belanja</span>
+                    <span className="text-[10px] font-extrabold px-1.5 py-0.2 rounded-full bg-gradient-to-r from-sky-500 to-indigo-500 text-white shadow-2xs">
+                      AI
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Foto nota belanja, otomatis isi transaksi
+                  </div>
+                </div>
+              </div>
+            </button>
+
             {/* Pengeluaran (-) */}
             <button
               type="button"

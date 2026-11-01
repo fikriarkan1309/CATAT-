@@ -23,6 +23,7 @@ import { CategoryManagementView } from './components/CategoryManagementView';
 import { ExportLaporanView } from './components/ExportLaporanView';
 import { SyncQueueModal } from './components/SyncQueueModal';
 import { ThemedTransactionModal } from './components/ThemedTransactionModal';
+import { ScanReceiptModal, ScannedReceiptData } from './components/ScanReceiptModal';
 import { AccountManageModal } from './components/AccountManageModal';
 import { BudgetManageModal } from './components/BudgetManageModal';
 import { SettingsMenuModal } from './components/SettingsMenuModal';
@@ -120,6 +121,14 @@ export default function App() {
   const [isTxnModalOpen, setIsTxnModalOpen] = useState(false);
   const [txnModalType, setTxnModalType] = useState<TransactionType>('expense');
   const [selectedAccountIdForTxn, setSelectedAccountIdForTxn] = useState<string | undefined>(undefined);
+  const [isScanReceiptOpen, setIsScanReceiptOpen] = useState(false);
+  const [receiptInitialValues, setReceiptInitialValues] = useState<{
+    amount?: number;
+    partyTo?: string;
+    notes?: string;
+    categoryId?: string;
+    transactionDate?: string;
+  } | null>(null);
 
   // Edit Transaction Modal State
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
@@ -141,22 +150,38 @@ export default function App() {
   // Sync Modal
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
 
-  // Triggers for Themed Transaction Form (Merah, Hijau, Biru)
+  // Triggers for Themed Transaction Form (Merah, Hijau, Biru & Scan Struk)
   const handleOpenExpense = (accountId?: string) => {
+    setReceiptInitialValues(null);
     setTxnModalType('expense');
     setSelectedAccountIdForTxn(accountId);
     setIsTxnModalOpen(true);
   };
 
   const handleOpenIncome = (accountId?: string) => {
+    setReceiptInitialValues(null);
     setTxnModalType('income');
     setSelectedAccountIdForTxn(accountId);
     setIsTxnModalOpen(true);
   };
 
   const handleOpenTransfer = (accountId?: string) => {
+    setReceiptInitialValues(null);
     setTxnModalType('transfer');
     setSelectedAccountIdForTxn(accountId);
+    setIsTxnModalOpen(true);
+  };
+
+  const handleApplyScannedReceipt = (data: ScannedReceiptData) => {
+    setReceiptInitialValues({
+      amount: data.totalAmount,
+      partyTo: data.merchant,
+      notes: data.summaryNotes,
+      categoryId: data.categoryId,
+      transactionDate: data.transactionDate,
+    });
+    setTxnModalType('expense');
+    setSelectedAccountIdForTxn(undefined);
     setIsTxnModalOpen(true);
   };
 
@@ -281,6 +306,7 @@ export default function App() {
         isUserAccountModalOpen ||
         isSecurityModalOpen ||
         isNewUserPinPromptOpen ||
+        isScanReceiptOpen ||
         isSyncModalOpen;
 
       if (isModalOpen) {
@@ -294,6 +320,7 @@ export default function App() {
         setIsUserAccountModalOpen(false);
         setIsSecurityModalOpen(false);
         setIsNewUserPinPromptOpen(false);
+        setIsScanReceiptOpen(false);
         setIsSyncModalOpen(false);
         window.history.pushState(
           { tab: currentTab, level: LEVEL_3_TABS.includes(currentTab) ? 3 : LEVEL_2_TABS.includes(currentTab) ? 2 : 1 },
@@ -335,6 +362,7 @@ export default function App() {
     isUserAccountModalOpen,
     isSecurityModalOpen,
     isNewUserPinPromptOpen,
+    isScanReceiptOpen,
     isSyncModalOpen,
   ]);
 
@@ -721,6 +749,7 @@ export default function App() {
         onSelectExpense={() => handleOpenExpense()}
         onSelectIncome={() => handleOpenIncome()}
         onSelectTransfer={() => handleOpenTransfer()}
+        onSelectScanReceipt={() => setIsScanReceiptOpen(true)}
       />
 
       {/* ========================================================================= */}
@@ -730,7 +759,10 @@ export default function App() {
       {/* Themed Transaction Form Modal (Merah / Hijau / Biru) */}
       <ThemedTransactionModal
         isOpen={isTxnModalOpen}
-        onClose={() => setIsTxnModalOpen(false)}
+        onClose={() => {
+          setIsTxnModalOpen(false);
+          setReceiptInitialValues(null);
+        }}
         type={txnModalType}
         accounts={accounts}
         categories={categories}
@@ -738,11 +770,23 @@ export default function App() {
         transactions={transactions}
         activeRole={activeRole}
         defaultAccountId={selectedAccountIdForTxn}
+        initialValues={receiptInitialValues || undefined}
         onOpenManageCategories={() => {
           setIsTxnModalOpen(false);
           handleSelectTab('categories');
         }}
-        onSave={addTransaction}
+        onSave={(data) => {
+          addTransaction(data);
+          setReceiptInitialValues(null);
+        }}
+      />
+
+      {/* Scan Struk Belanja Modal (Gemini AI Cara 1 Native Camera & Gallery) */}
+      <ScanReceiptModal
+        isOpen={isScanReceiptOpen}
+        onClose={() => setIsScanReceiptOpen(false)}
+        categories={categories}
+        onApplyReceipt={handleApplyScannedReceipt}
       />
 
       {/* Account Manage Modal */}

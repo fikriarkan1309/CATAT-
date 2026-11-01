@@ -32,6 +32,15 @@ interface ThemedTransactionModalProps {
   transactions: Transaction[];
   activeRole: UserRole;
   defaultAccountId?: string;
+  initialValues?: {
+    amount?: number;
+    partyTo?: string;
+    partyFrom?: string;
+    notes?: string;
+    categoryId?: string;
+    transactionDate?: string;
+    accountId?: string;
+  };
   onOpenManageCategories: () => void;
   onSave: (data: {
     accountId: string;
@@ -60,6 +69,7 @@ export const ThemedTransactionModal: React.FC<ThemedTransactionModalProps> = ({
   transactions,
   activeRole,
   defaultAccountId,
+  initialValues,
   onOpenManageCategories,
   onSave,
 }) => {
@@ -93,16 +103,16 @@ export const ThemedTransactionModal: React.FC<ThemedTransactionModalProps> = ({
   // Isian akan direset bersih PASCA SUBMIT pada handleSubmit.
   useEffect(() => {
     if (!prevIsOpenRef.current && isOpen) {
-      setAmountStr('');
-      setPartyFrom('');
-      setPartyTo('');
-      setNotes('');
+      setAmountStr(initialValues?.amount ? initialValues.amount.toString() : '');
+      setPartyFrom(initialValues?.partyFrom || '');
+      setPartyTo(initialValues?.partyTo || '');
+      setNotes(initialValues?.notes || '');
       setIsGuiltFree(false);
-      setTxnDate(new Date().toISOString().split('T')[0]);
+      setTxnDate(initialValues?.transactionDate ? initialValues.transactionDate.split('T')[0] : new Date().toISOString().split('T')[0]);
 
       const accs = accountsRef.current;
       const cats = categoriesRef.current;
-      const initialSource = defaultAccountId || accs[0]?.id || '';
+      const initialSource = initialValues?.accountId || defaultAccountId || accs[0]?.id || '';
       setAccountId(initialSource);
       const initialTarget = accs.find((a) => a.id !== initialSource);
       setTargetAccountId(initialTarget ? initialTarget.id : '');
@@ -110,7 +120,22 @@ export const ThemedTransactionModal: React.FC<ThemedTransactionModalProps> = ({
       if (type !== 'transfer') {
         const relevant = cats.filter((c) => c.type === type);
         const parents = relevant.filter((c) => !c.parentId);
-        if (parents.length > 0) {
+
+        if (initialValues?.categoryId) {
+          const matched = cats.find((c) => c.id === initialValues.categoryId);
+          if (matched) {
+            if (matched.parentId) {
+              setSelectedParentId(matched.parentId);
+              setSelectedCategoryId(matched.id);
+            } else {
+              setSelectedParentId(matched.id);
+              setSelectedCategoryId(matched.id);
+            }
+          } else if (parents.length > 0) {
+            setSelectedParentId(parents[0].id);
+            setSelectedCategoryId(parents[0].id);
+          }
+        } else if (parents.length > 0) {
           const firstParent = parents[0];
           setSelectedParentId(firstParent.id);
           const firstSub = relevant.find((c) => c.parentId === firstParent.id);
@@ -125,7 +150,7 @@ export const ThemedTransactionModal: React.FC<ThemedTransactionModalProps> = ({
       }
     }
     prevIsOpenRef.current = isOpen;
-  }, [isOpen, type, defaultAccountId]);
+  }, [isOpen, type, defaultAccountId, initialValues]);
 
   if (!isOpen) return null;
 
