@@ -63,7 +63,7 @@ export const ScanReceiptModal: React.FC<ScanReceiptModalProps> = ({
     onClose();
   };
 
-  // Compress image to fast base64 (max 1600px width/height)
+  // Compress image to fast base64 (max 1200px width/height for fast mobile upload)
   const processImageFile = (file: File) => {
     setErrorMessage(null);
     setScannedResult(null);
@@ -78,7 +78,7 @@ export const ScanReceiptModal: React.FC<ScanReceiptModalProps> = ({
         const canvas = document.createElement('canvas');
         let width = img.width;
         let height = img.height;
-        const maxDimension = 1600;
+        const maxDimension = 1200;
 
         if (width > maxDimension || height > maxDimension) {
           if (width > height) {
@@ -95,7 +95,7 @@ export const ScanReceiptModal: React.FC<ScanReceiptModalProps> = ({
         const ctx = canvas.getContext('2d');
         if (ctx) {
           ctx.drawImage(img, 0, 0, width, height);
-          const compressedBase64 = canvas.toDataURL('image/jpeg', 0.82);
+          const compressedBase64 = canvas.toDataURL('image/jpeg', 0.72);
           setSelectedImage(compressedBase64);
           analyzeWithGemini(compressedBase64);
         } else {
@@ -140,14 +140,28 @@ export const ScanReceiptModal: React.FC<ScanReceiptModalProps> = ({
         }),
       });
 
-      const json = await res.json();
+      const responseText = await res.text();
+      let json: any = null;
+      try {
+        json = responseText ? JSON.parse(responseText) : null;
+      } catch {
+        // Non-JSON response (e.g. gateway timeout or proxy error)
+      }
 
-      if (!res.ok || !json.success) {
-        if (json.errorCode === 'MISSING_API_KEY') {
-          // Provide mock sample preview so user can test UI even without API key set yet
-          throw new Error('GEMINI_API_KEY belum dikonfigurasi di file .env server. Anda bisa mengaturnya atau mencoba tombol "Coba Struk Contoh" di bawah.');
+      if (!res.ok || !json || !json.success) {
+        if (json?.errorCode === 'MISSING_API_KEY') {
+          throw new Error('GEMINI_API_KEY belum dikonfigurasi di file .env server.');
         }
-        throw new Error(json.error || 'Gagal menganalisis struk belanja.');
+
+        let userMsg = json?.error;
+        if (!userMsg) {
+          if (res.status === 504 || res.status === 502) {
+            userMsg = 'Koneksi ke AI timeout karena sinyal lambat. Silakan coba foto ulang.';
+          } else {
+            userMsg = `Server merespons status ${res.status}. Silakan coba lagi beberapa saat.`;
+          }
+        }
+        throw new Error(userMsg);
       }
 
       const parsed = json.data;

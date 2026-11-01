@@ -46,8 +46,15 @@ async function startServer() {
         });
       }
 
-      // Initialize official GoogleGenAI SDK
-      const ai = new GoogleGenAI({ apiKey });
+      // Initialize official GoogleGenAI SDK with recommended User-Agent
+      const ai = new GoogleGenAI({
+        apiKey,
+        httpOptions: {
+          headers: {
+            'User-Agent': 'aistudio-build',
+          },
+        },
+      });
 
       // Clean base64 string if it contains data URI prefix
       const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, '');
@@ -70,12 +77,21 @@ Ekstrak informasi berikut:
 
 Wajib menghasilkan format JSON murni.`;
 
-      const response = await ai.models.generateContent({
-        model: process.env.GEMINI_MODEL || 'gemini-3.8-flash',
-        contents: [
-          {
-            role: 'user',
-            parts: [
+      // Use gemini-3.1-flash-lite for instant 2-second multimodal OCR (zero thinking overhead), fallback to gemini-3.8-flash
+      const modelsToTry = [
+        process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite',
+        'gemini-3.8-flash',
+      ];
+
+      let responseText = '';
+      let lastError: any = null;
+
+      for (const modelName of modelsToTry) {
+        try {
+          const is38 = modelName.includes('3.8');
+          const response = await ai.models.generateContent({
+            model: modelName,
+            contents: [
               {
                 inlineData: {
                   mimeType: mimeType || 'image/jpeg',
@@ -86,16 +102,27 @@ Wajib menghasilkan format JSON murni.`;
                 text: 'Silakan baca struk belanja ini dan ekstrak datanya dalam format JSON sesuai instruksi.',
               },
             ],
-          },
-        ],
-        config: {
-          systemInstruction: systemPrompt,
-          responseMimeType: 'application/json',
-          temperature: 0.1,
-        },
-      });
+            config: {
+              systemInstruction: systemPrompt,
+              responseMimeType: 'application/json',
+              ...(is38 ? { thinkingConfig: { thinkingLevel: 'LOW' as any } } : {}),
+            },
+          });
 
-      const responseText = response.text?.trim() || '{}';
+          responseText = response.text?.trim() || '';
+          if (responseText && responseText !== '{}') {
+            break;
+          }
+        } catch (modelErr: any) {
+          console.warn(`[Gemini API] Model ${modelName} encountered error, trying next:`, modelErr?.message || modelErr);
+          lastError = modelErr;
+        }
+      }
+
+      if (!responseText || responseText === '{}') {
+        throw lastError || new Error('Tidak dapat mengekstrak teks dari struk belanja.');
+      }
+
       let parsedData: any = {};
       try {
         parsedData = JSON.parse(responseText);
@@ -119,9 +146,18 @@ Wajib menghasilkan format JSON murni.`;
       });
     } catch (err: any) {
       console.error('[Gemini API] Error scanning receipt:', err);
+      let userFriendlyError = err?.message || 'Terjadi kesalahan saat memproses gambar dengan Gemini AI.';
+      if (typeof userFriendlyError === 'string' && userFriendlyError.includes('"message":')) {
+        try {
+          const parsed = JSON.parse(userFriendlyError);
+          if (parsed?.error?.message) {
+            userFriendlyError = parsed.error.message;
+          }
+        } catch {}
+      }
       return res.status(500).json({
         success: false,
-        error: err?.message || 'Terjadi kesalahan saat memproses gambar dengan Gemini AI.',
+        error: userFriendlyError,
       });
     }
   });
