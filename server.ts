@@ -61,7 +61,7 @@ async function startServer() {
         });
       }
 
-      // Initialize official GoogleGenAI SDK with recommended User-Agent
+      // Initialize official GoogleGenAI SDK
       const ai = new GoogleGenAI({
         apiKey,
         httpOptions: {
@@ -92,10 +92,12 @@ Ekstrak informasi berikut:
 
 Wajib menghasilkan format JSON murni.`;
 
-      // Use gemini-3.1-flash-lite for instant 2-second multimodal OCR (zero thinking overhead), fallback to gemini-3.8-flash
       const modelsToTry = [
         process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite',
         'gemini-3.8-flash',
+        'gemini-2.5-flash',
+        'gemini-2.0-flash',
+        'gemini-1.5-flash',
       ];
 
       let responseText = '';
@@ -129,8 +131,47 @@ Wajib menghasilkan format JSON murni.`;
             break;
           }
         } catch (modelErr: any) {
-          console.warn(`[Gemini API] Model ${modelName} encountered error, trying next:`, modelErr?.message || modelErr);
+          console.warn(`[Gemini API] Model ${modelName} encountered SDK error, trying direct REST call:`, modelErr?.message || modelErr);
           lastError = modelErr;
+
+          // Direct REST API fallback with x-goog-api-key header
+          try {
+            const restUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${encodeURIComponent(apiKey)}`;
+
+            const restRes = await fetch(restUrl, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'User-Agent': 'aistudio-build',
+                'x-goog-api-key': apiKey,
+              },
+              body: JSON.stringify({
+                contents: [
+                  {
+                    parts: [
+                      { inlineData: { mimeType: mimeType || 'image/jpeg', data: cleanBase64 } },
+                      { text: 'Silakan baca struk belanja ini dan ekstrak datanya dalam format JSON sesuai instruksi.' },
+                    ],
+                  },
+                ],
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+                generationConfig: { responseMimeType: 'application/json' },
+              }),
+            });
+
+            const restData = await restRes.json();
+            if (restRes.ok) {
+              const text = restData?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+              if (text && text !== '{}') {
+                responseText = text;
+                break;
+              }
+            } else {
+              console.warn(`[Gemini REST API] ${modelName} error status ${restRes.status}:`, restData);
+            }
+          } catch (restErr: any) {
+            console.warn(`[Gemini REST API] ${modelName} exception:`, restErr?.message || restErr);
+          }
         }
       }
 
