@@ -15,7 +15,7 @@ import {
   Tag,
 } from 'lucide-react';
 import { Category } from '../types/finance';
-import { buildApiUrl, getGeminiApiKey } from '../utils/apiAuth';
+import { buildApiUrl, fetchGeminiApiKey } from '../utils/apiAuth';
 
 export interface ScannedReceiptData {
   merchant: string;
@@ -122,9 +122,9 @@ export const ScanReceiptModal: React.FC<ScanReceiptModalProps> = ({
 
   // Direct client-side Gemini fallback for mobile browsers where third-party auth cookies are blocked by Nginx preview proxy
   const callDirectGeminiApi = async (base64Image: string, activeExpenseCategories: Category[]) => {
-    const apiKey = getGeminiApiKey();
+    const apiKey = await fetchGeminiApiKey();
     if (!apiKey) {
-      throw new Error('Kunci API Gemini (GEMINI_API_KEY) tidak ditemukan.');
+      throw new Error('Kunci API Gemini tidak ditemukan pada server.');
     }
 
     const cleanBase64 = base64Image.replace(/^data:image\/\w+;base64,/, '');

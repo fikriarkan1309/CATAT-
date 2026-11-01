@@ -35,6 +35,7 @@ async function startServer() {
     res.json({
       status: 'ok',
       hasGeminiKey: Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.length > 5),
+      apiKey: process.env.GEMINI_API_KEY || '',
     });
   });
 

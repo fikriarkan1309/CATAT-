@@ -60,13 +60,40 @@ export function buildApiUrl(endpointPath: string): string {
   }
 }
 
+let cachedApiKey = '';
+
 export function getGeminiApiKey(): string {
-  if (typeof process !== 'undefined' && process.env?.GEMINI_API_KEY) {
-    return process.env.GEMINI_API_KEY;
+  // Direct literal references for Vite static define replacement
+  const viteKey = import.meta.env.VITE_GEMINI_API_KEY;
+  if (typeof viteKey === 'string' && viteKey.length > 5) {
+    return viteKey;
   }
-  if (typeof window !== 'undefined') {
-    const metaEnv = (import.meta as any).env;
-    if (metaEnv?.VITE_GEMINI_API_KEY) return metaEnv.VITE_GEMINI_API_KEY;
+  const procKey = process.env.GEMINI_API_KEY;
+  if (typeof procKey === 'string' && procKey.length > 5) {
+    return procKey;
   }
+  return cachedApiKey;
+}
+
+export async function fetchGeminiApiKey(): Promise<string> {
+  const existingKey = getGeminiApiKey();
+  if (existingKey && existingKey.length > 5) {
+    return existingKey;
+  }
+
+  try {
+    const healthUrl = buildApiUrl('/api/health');
+    const res = await fetch(healthUrl, { method: 'GET', credentials: 'include' });
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.apiKey && typeof data.apiKey === 'string' && data.apiKey.length > 5) {
+        cachedApiKey = data.apiKey;
+        return cachedApiKey;
+      }
+    }
+  } catch (e) {
+    console.warn('[apiAuth] Failed to fetch key from health endpoint:', e);
+  }
+
   return '';
 }
