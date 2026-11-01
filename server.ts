@@ -184,11 +184,12 @@ Wajib menghasilkan format JSON murni.`;
   // Mount Vite middleware in development mode
   const isProduction = process.env.NODE_ENV === 'production';
   if (!isProduction) {
+    const hmrDisabled = process.env.DISABLE_HMR === 'true';
     const vite = await createViteServer({
       server: {
         middlewareMode: true,
-        hmr: process.env.DISABLE_HMR !== 'true',
-        watch: process.env.DISABLE_HMR === 'true' ? null : {},
+        hmr: hmrDisabled ? false : { overlay: false },
+        watch: hmrDisabled ? null : {},
       },
       appType: 'spa',
     });
