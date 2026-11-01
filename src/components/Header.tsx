@@ -15,6 +15,7 @@ import {
   Settings,
   Moon,
   Sun,
+  Bell,
 } from 'lucide-react';
 
 export type MainNavTab =
@@ -37,6 +38,8 @@ interface HeaderProps {
   theme: 'light' | 'dark';
   onToggleTheme: () => void;
   onOpenSettings: () => void;
+  onOpenNotifications?: () => void;
+  unreadNotificationCount?: number;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -50,6 +53,8 @@ export const Header: React.FC<HeaderProps> = ({
   theme,
   onToggleTheme,
   onOpenSettings,
+  onOpenNotifications,
+  unreadNotificationCount = 0,
 }) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
@@ -226,6 +231,23 @@ export const Header: React.FC<HeaderProps> = ({
                 {pendingSyncCount > 0 ? `${pendingSyncCount} Antrean` : 'Tersinkron'}
               </span>
             </button>
+
+            {/* Bell Notifications */}
+            {onOpenNotifications && (
+              <button
+                type="button"
+                onClick={onOpenNotifications}
+                title="Notifikasi & Pengingat"
+                className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors relative cursor-pointer"
+              >
+                <Bell className="w-3.5 h-3.5 text-sky-500" />
+                {unreadNotificationCount > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-3.5 h-3.5 px-0.5 bg-rose-500 text-white text-[8px] font-extrabold rounded-full flex items-center justify-center animate-pulse">
+                    {unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}
+                  </span>
+                )}
+              </button>
+            )}
 
             {/* Dark Mode Quick Toggle */}
             <button

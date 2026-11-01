@@ -100,6 +100,23 @@ export function useFinanceStore() {
     ) => storageEngine.processBudgetRollover(budgetId, action, targetGoalId),
     updateGuiltFreeSpent: (role: UserRole, delta: number) =>
       storageEngine.updateGuiltFreeSpent(role, delta),
+    // Notifications
+    notifications: state.notifications || [],
+    notificationSettings: state.notificationSettings || storageEngine.getNotificationSettings(),
+    unreadNotificationCount: (state.notifications || []).filter((n) => !n.isRead).length,
+    updateNotificationSettings: (updates: Parameters<typeof storageEngine.updateNotificationSettings>[0]) =>
+      storageEngine.updateNotificationSettings(updates),
+    addCustomNotification: (
+      title: string,
+      message: string,
+      type?: Parameters<typeof storageEngine.addCustomNotification>[2],
+      actionView?: string
+    ) => storageEngine.addCustomNotification(title, message, type, actionView),
+    markNotificationRead: (id: string) => storageEngine.markNotificationRead(id),
+    markAllNotificationsRead: () => storageEngine.markAllNotificationsRead(),
+    clearNotifications: () => storageEngine.clearNotifications(),
+    deleteNotification: (id: string) => storageEngine.deleteNotification(id),
+    checkNotifications: () => storageEngine.checkNotifications(),
     // Sync
     triggerSync: () => storageEngine.triggerSync(),
     clearSyncedQueue: () => storageEngine.clearSyncedQueue(),

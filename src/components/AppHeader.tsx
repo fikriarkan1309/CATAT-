@@ -1,9 +1,11 @@
 import React from 'react';
-import { WifiOff, RefreshCw } from 'lucide-react';
+import { WifiOff, RefreshCw, Bell } from 'lucide-react';
 import { AppIcon } from './AppIcon';
 
 interface AppHeaderProps {
   onOpenSettings: () => void;
+  onOpenNotifications?: () => void;
+  unreadNotificationCount?: number;
   isOnline: boolean;
   isSyncing: boolean;
   pendingSyncCount: number;
@@ -13,6 +15,8 @@ interface AppHeaderProps {
 
 export const AppHeader: React.FC<AppHeaderProps> = ({
   onOpenSettings,
+  onOpenNotifications,
+  unreadNotificationCount = 0,
   isOnline,
   isSyncing,
   pendingSyncCount,
@@ -42,8 +46,8 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
           />
         </button>
 
-        {/* Action icons on right: network state if syncing/offline + settings gear */}
-        <div className="flex items-center gap-2.5">
+        {/* Action icons on right: network state + notification bell + settings gear */}
+        <div className="flex items-center gap-2">
           {/* Subtle network badge if offline or pending queue */}
           {!isOnline && (
             <div
@@ -67,11 +71,29 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
             </button>
           )}
 
+          {/* Notification Bell Button */}
+          {onOpenNotifications && (
+            <button
+              type="button"
+              onClick={onOpenNotifications}
+              className="p-1 rounded-xl text-sky-500 hover:text-sky-600 dark:text-sky-400 hover:bg-sky-50 dark:hover:bg-slate-800 transition-all active:scale-90 relative cursor-pointer"
+              title="Notifikasi & Pengingat"
+              aria-label="Notifikasi & Pengingat"
+            >
+              <Bell className="w-6 h-6" />
+              {unreadNotificationCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 bg-rose-500 text-white text-[9px] font-extrabold rounded-full flex items-center justify-center border-2 border-white dark:border-slate-950 animate-pulse">
+                  {unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}
+                </span>
+              )}
+            </button>
+          )}
+
           {/* Settings gear with user's custom SVG from /public/icons/settings.svg */}
           <button
             type="button"
             onClick={onOpenSettings}
-            className="p-1 rounded-xl text-sky-500 hover:text-sky-600 dark:text-sky-400 hover:bg-sky-50 dark:hover:bg-slate-800 transition-all active:scale-90"
+            className="p-1 rounded-xl text-sky-500 hover:text-sky-600 dark:text-sky-400 hover:bg-sky-50 dark:hover:bg-slate-800 transition-all active:scale-90 cursor-pointer"
             title="Pengaturan & Akun"
             aria-label="Buka Pengaturan"
           >

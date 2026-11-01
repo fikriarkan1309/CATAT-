@@ -1,10 +1,13 @@
 import {
   Account,
+  AppNotification,
   Budget,
   BudgetDuration,
   Category,
   DebtItem,
   DebtPayment,
+  NotificationSettings,
+  NotificationType,
   RecurringBill,
   SharedGoal,
   SyncQueueItem,
@@ -22,6 +25,11 @@ import {
   INITIAL_TRANSACTIONS,
 } from './constants';
 import { getSupabaseClient, isSupabaseConfigured } from './supabase';
+import {
+  evaluateAndTriggerNotifications,
+  INITIAL_NOTIFICATION_SETTINGS,
+} from './notificationEngine';
+import { sendOSPushNotification } from './webPush';
 
 const DB_NAME = 'keluarga_fin_offline_db';
 const DB_VERSION = 1;
@@ -41,6 +49,8 @@ interface StorageState {
   goals: SharedGoal[];
   bills: RecurringBill[];
   debts: DebtItem[];
+  notifications: AppNotification[];
+  notificationSettings: NotificationSettings;
   syncQueue: SyncQueueItem[];
   guiltFree: typeof INITIAL_GUILT_FREE;
   activeRole: UserRole;
@@ -75,6 +85,8 @@ class OfflineStorageEngine {
       goals: INITIAL_GOALS,
       bills: INITIAL_BILLS,
       debts: INITIAL_DEBTS,
+      notifications: [],
+      notificationSettings: INITIAL_NOTIFICATION_SETTINGS,
       syncQueue: [],
       guiltFree: INITIAL_GUILT_FREE,
       activeRole: 'husband',
@@ -330,10 +342,15 @@ class OfflineStorageEngine {
               isSimulatedOffline: false,
               bills: Array.isArray(parsed.bills) ? parsed.bills : INITIAL_BILLS,
               debts: Array.isArray(parsed.debts) ? parsed.debts : INITIAL_DEBTS,
+              notifications: Array.isArray(parsed.notifications) ? parsed.notifications : [],
+              notificationSettings: parsed.notificationSettings
+                ? { ...INITIAL_NOTIFICATION_SETTINGS, ...parsed.notificationSettings }
+                : INITIAL_NOTIFICATION_SETTINGS,
             };
             this.sanitizeTransferTransactions();
             this.reconcilePaidBillsTransactions();
             this.recalculateAccountBalances();
+            this.checkNotifications();
           } catch {
             // fallback
           }
@@ -508,6 +525,86 @@ class OfflineStorageEngine {
       }
     } catch {}
     this.notify();
+  }
+
+  // -------------------------------------------------------------
+  // NOTIFICATIONS API
+  // -------------------------------------------------------------
+  public getNotifications() {
+    return this.state.notifications || [];
+  }
+
+  public getNotificationSettings() {
+    return this.state.notificationSettings || INITIAL_NOTIFICATION_SETTINGS;
+  }
+
+  public updateNotificationSettings(updates: Partial<NotificationSettings>) {
+    this.state.notificationSettings = {
+      ...(this.state.notificationSettings || INITIAL_NOTIFICATION_SETTINGS),
+      ...updates,
+    };
+    this.checkNotifications();
+    this.persist();
+  }
+
+  public addCustomNotification(
+    title: string,
+    message: string,
+    type: NotificationType = 'system',
+    actionView?: string
+  ) {
+    const notif: AppNotification = {
+      id: 'notif_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+      type,
+      title,
+      message,
+      timestamp: new Date().toISOString(),
+      isRead: false,
+      actionView,
+    };
+    this.state.notifications = [notif, ...(this.state.notifications || [])];
+    this.persist();
+    if (this.state.notificationSettings?.pushEnabled) {
+      sendOSPushNotification(title, { body: message, data: { actionView } });
+    }
+    return notif;
+  }
+
+  public markNotificationRead(id: string) {
+    this.state.notifications = (this.state.notifications || []).map((n) =>
+      n.id === id ? { ...n, isRead: true } : n
+    );
+    this.persist();
+  }
+
+  public markAllNotificationsRead() {
+    this.state.notifications = (this.state.notifications || []).map((n) => ({ ...n, isRead: true }));
+    this.persist();
+  }
+
+  public clearNotifications() {
+    this.state.notifications = [];
+    this.persist();
+  }
+
+  public deleteNotification(id: string) {
+    this.state.notifications = (this.state.notifications || []).filter((n) => n.id !== id);
+    this.persist();
+  }
+
+  public checkNotifications() {
+    const { newNotifications, updatedSettings } = evaluateAndTriggerNotifications(
+      this.state,
+      this.state.notifications || [],
+      this.state.notificationSettings || INITIAL_NOTIFICATION_SETTINGS
+    );
+
+    this.state.notificationSettings = updatedSettings;
+
+    if (newNotifications.length > 0) {
+      this.state.notifications = [...newNotifications, ...(this.state.notifications || [])];
+      this.persist();
+    }
   }
 
   public subscribe(listener: () => void) {
@@ -3952,6 +4049,8 @@ class OfflineStorageEngine {
       goals: INITIAL_GOALS,
       bills: INITIAL_BILLS,
       debts: INITIAL_DEBTS,
+      notifications: [],
+      notificationSettings: INITIAL_NOTIFICATION_SETTINGS,
       syncQueue: [],
       guiltFree: INITIAL_GUILT_FREE,
       activeRole: 'husband',

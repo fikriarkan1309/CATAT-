@@ -10,6 +10,7 @@ import {
   Settings,
   LogOut,
   ShieldCheck,
+  Bell,
 } from 'lucide-react';
 import { isDevicePinSet } from '../lib/deviceSecurity';
 
@@ -20,6 +21,7 @@ interface SettingsMenuModalProps {
   onOpenCategories: () => void;
   onOpenAccountModal: () => void;
   onOpenSecurityModal: () => void;
+  onOpenNotifications?: () => void;
   theme: 'light' | 'dark';
   onToggleTheme: () => void;
   onLogout?: () => void;
@@ -32,6 +34,7 @@ export const SettingsMenuModal: React.FC<SettingsMenuModalProps> = ({
   onOpenCategories,
   onOpenAccountModal,
   onOpenSecurityModal,
+  onOpenNotifications,
   theme,
   onToggleTheme,
   onLogout,
@@ -165,6 +168,33 @@ export const SettingsMenuModal: React.FC<SettingsMenuModalProps> = ({
               <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-200" />
             </div>
           </button>
+
+          {/* 4. NOTIFIKASI & PENGINGAT */}
+          {onOpenNotifications && (
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                onOpenNotifications();
+              }}
+              className="w-full flex items-center justify-between p-2.5 rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-800 text-left transition-colors group"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 flex items-center justify-center group-hover:scale-105 transition-transform">
+                  <Bell className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="text-xs font-bold text-slate-900 dark:text-white block">
+                    Notifikasi & Pengingat
+                  </span>
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Pengingat tagihan, limit & harian
+                  </span>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-200" />
+            </button>
+          )}
 
           {/* 4. TEMA / DARK MODE TOGGLE */}
           <button

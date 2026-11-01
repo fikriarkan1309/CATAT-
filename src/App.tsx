@@ -33,6 +33,8 @@ import { AuthLoginScreen } from './components/AuthLoginScreen';
 import { PinLockModal } from './components/PinLockModal';
 import { SecuritySettingsModal } from './components/SecuritySettingsModal';
 import { NewUserPinPromptModal } from './components/NewUserPinPromptModal';
+import { NotificationDrawerModal } from './components/NotificationDrawerModal';
+import { NotificationSettingsModal } from './components/NotificationSettingsModal';
 import {
   isDevicePinSet,
   shouldAutoLock,
@@ -101,6 +103,15 @@ export default function App() {
     resetToSampleData,
     triggerSync,
     clearSyncedQueue,
+    notifications,
+    notificationSettings,
+    unreadNotificationCount,
+    updateNotificationSettings,
+    addCustomNotification,
+    markNotificationRead,
+    markAllNotificationsRead,
+    clearNotifications,
+    deleteNotification,
   } = useFinanceStore();
 
   // Navigation tab (default: home)
@@ -111,6 +122,8 @@ export default function App() {
 
   // Menu & Settings Modals
   const [isSettingsMenuOpen, setIsSettingsMenuOpen] = useState(false);
+  const [isNotificationDrawerOpen, setIsNotificationDrawerOpen] = useState(false);
+  const [isNotificationSettingsOpen, setIsNotificationSettingsOpen] = useState(false);
   const [isDataModalOpen, setIsDataModalOpen] = useState(false);
   const [isUserAccountModalOpen, setIsUserAccountModalOpen] = useState(false);
   const [isSecurityModalOpen, setIsSecurityModalOpen] = useState(false);
@@ -494,6 +507,8 @@ export default function App() {
         <AppHeader
           onLogoClick={() => handleSelectTab('home')}
           onOpenSettings={() => setIsSettingsMenuOpen(true)}
+          onOpenNotifications={() => setIsNotificationDrawerOpen(true)}
+          unreadNotificationCount={unreadNotificationCount}
           isOnline={isOnline}
           isSyncing={isSyncing}
           pendingSyncCount={pendingSyncCount}
@@ -884,6 +899,7 @@ export default function App() {
         onOpenCategories={() => handleSelectTab('categories')}
         onOpenAccountModal={() => setIsUserAccountModalOpen(true)}
         onOpenSecurityModal={() => setIsSecurityModalOpen(true)}
+        onOpenNotifications={() => setIsNotificationSettingsOpen(true)}
         theme={theme}
         onToggleTheme={toggleTheme}
         onLogout={logout}
@@ -953,6 +969,39 @@ export default function App() {
         isSyncing={isSyncing}
         onTriggerSync={triggerSync}
         onClearSynced={clearSyncedQueue}
+      />
+
+      {/* Notification Center Drawer Modal */}
+      <NotificationDrawerModal
+        isOpen={isNotificationDrawerOpen}
+        onClose={() => setIsNotificationDrawerOpen(false)}
+        notifications={notifications}
+        onMarkRead={markNotificationRead}
+        onMarkAllRead={markAllNotificationsRead}
+        onClearAll={clearNotifications}
+        onDeleteNotification={deleteNotification}
+        onOpenSettings={() => {
+          setIsNotificationDrawerOpen(false);
+          setIsNotificationSettingsOpen(true);
+        }}
+        onNavigateView={(view) => {
+          if (view === 'bills') handleSelectTab('bills');
+          else if (view === 'budget') handleSelectTab('budgets');
+          else if (view === 'goals') handleSelectTab('savings');
+          else if (view === 'reports') handleSelectTab('summary');
+          else handleSelectTab('home');
+        }}
+      />
+
+      {/* Notification Settings Modal */}
+      <NotificationSettingsModal
+        isOpen={isNotificationSettingsOpen}
+        onClose={() => setIsNotificationSettingsOpen(false)}
+        settings={notificationSettings}
+        onUpdateSettings={updateNotificationSettings}
+        onSendTestNotification={(title, message) => {
+          addCustomNotification(title, message, 'system');
+        }}
       />
     </div>
   );

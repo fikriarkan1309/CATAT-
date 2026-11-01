@@ -169,3 +169,36 @@ export interface SyncQueueItem {
   error?: string;
 }
 
+export type NotificationType =
+  | 'bill_reminder'
+  | 'budget_alert'
+  | 'daily_reminder'
+  | 'goal_milestone'
+  | 'summary_report'
+  | 'system';
+
+export interface AppNotification {
+  id: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  timestamp: string;
+  isRead: boolean;
+  actionView?: string;
+  data?: any;
+}
+
+export interface NotificationSettings {
+  enabled: boolean;
+  pushEnabled: boolean;
+  billReminders: boolean;
+  budgetAlerts: boolean;
+  dailyReminder: boolean;
+  dailyReminderTime: string;
+  goalProgress: boolean;
+  summaryReports: boolean;
+  lastDailyReminderDate?: string;
+  lastWeeklySummaryDate?: string;
+  lastMonthlySummaryDate?: string;
+}
+
