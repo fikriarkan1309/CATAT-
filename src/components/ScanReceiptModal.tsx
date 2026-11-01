@@ -119,7 +119,113 @@ export const ScanReceiptModal: React.FC<ScanReceiptModalProps> = ({
     e.target.value = '';
   };
 
-  // Call Gemini API Backend
+  // Direct client-side Gemini fallback for mobile browsers where third-party auth cookies are blocked by Nginx preview proxy
+  const callDirectGeminiApi = async (base64Image: string, activeExpenseCategories: Category[]) => {
+    const apiKey = (typeof process !== 'undefined' && process.env?.GEMINI_API_KEY) || (import.meta as any).env?.VITE_GEMINI_API_KEY || '';
+    if (!apiKey) {
+      throw new Error('GEMINI_API_KEY tidak dikonfigurasi di lingkungan aplikasi.');
+    }
+
+    const cleanBase64 = base64Image.replace(/^data:image\/\w+;base64,/, '');
+    const categoryNames = activeExpenseCategories.map((c) => c.name).join(', ');
+
+    const systemPrompt = `Kamu adalah asisten keuangan pintar untuk aplikasi Catatin! Tugasmu adalah menganalisis foto struk / nota belanja dan mengekstrak informasinya menjadi format JSON yang sangat akurat.
+
+Berikut daftar kategori yang tersedia di aplikasi pengguna:
+[${categoryNames || 'Makanan & Minuman, Kebutuhan Pokok & Dapur, Transportasi, Kesehatan & Perawatan, Hiburan & Rekreasi, Tagihan & Utilitas, Belanja Lain-lain'}]
+
+Ekstrak informasi berikut:
+1. "merchant": Nama toko / tempat belanja / vendor (contoh: "Indomaret", "Superindo", "SPBU Pertamina", "Apotek K-24"). Jika tidak jelas, gunakan nama umum seperti "Minimarket / Toko".
+2. "totalAmount": Total nominal belanja akhir yang harus dibayar (angka integer rupiah, setelah diskon dan pajak).
+3. "transactionDate": Tanggal dan jam transaksi yang tertera pada struk dalam format ISO (YYYY-MM-DDTHH:mm:ss). Jika jam tidak ada, gunakan jam saat ini. Jika tanggal tidak ada atau buram, gunakan tanggal hari ini.
+4. "categoryName": Pilih satu nama kategori yang paling cocok dari daftar kategori yang disediakan di atas.
+5. "items": Daftar barang yang dibeli (array of object: { name: string, qty?: number, price?: number }).
+6. "summaryNotes": Ringkasan pendek barang-barang utama yang dibeli (contoh: "Minyak 2L, Beras 5kg, Telur 1kg").
+7. "confidence": Tingkat keyakinan bacaan (angka 0.0 sampai 1.0).
+
+Wajib menghasilkan format JSON murni.`;
+
+    const modelsToTry = [
+      'gemini-3.1-flash-lite',
+      'gemini-3.8-flash',
+    ];
+
+    let jsonResultText = '';
+    let lastErr: any = null;
+
+    for (const model of modelsToTry) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  {
+                    inlineData: {
+                      mimeType: 'image/jpeg',
+                      data: cleanBase64,
+                    },
+                  },
+                  {
+                    text: 'Silakan baca struk belanja ini dan ekstrak datanya dalam format JSON sesuai instruksi.',
+                  },
+                ],
+              },
+            ],
+            systemInstruction: {
+              parts: [{ text: systemPrompt }],
+            },
+            generationConfig: {
+              responseMimeType: 'application/json',
+            },
+          }),
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data?.error?.message || `Gemini API error status ${response.status}`);
+        }
+
+        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (text) {
+          jsonResultText = text;
+          break;
+        }
+      } catch (e: any) {
+        console.warn(`[Client Gemini Direct] Error model ${model}:`, e);
+        lastErr = e;
+      }
+    }
+
+    if (!jsonResultText) {
+      throw lastErr || new Error('Tidak dapat mengekstrak teks dari struk belanja.');
+    }
+
+    let parsedData: any = {};
+    try {
+      parsedData = JSON.parse(jsonResultText);
+    } catch {
+      const cleaned = jsonResultText.replace(/```json/g, '').replace(/```/g, '').trim();
+      parsedData = JSON.parse(cleaned);
+    }
+
+    return {
+      merchant: parsedData.merchant || 'Struk Belanja',
+      totalAmount: Number(parsedData.totalAmount) || 0,
+      transactionDate: parsedData.transactionDate || new Date().toISOString(),
+      categoryName: parsedData.categoryName || '',
+      items: parsedData.items || [],
+      summaryNotes: parsedData.summaryNotes || parsedData.merchant || '',
+      confidence: parsedData.confidence || 0.9,
+    };
+  };
+
+  // Call Gemini API Backend with seamless fallback for mobile devices
   const analyzeWithGemini = async (base64Image: string) => {
     setIsAnalyzing(true);
     setIsSessionError(false);
@@ -129,21 +235,14 @@ export const ScanReceiptModal: React.FC<ScanReceiptModalProps> = ({
     try {
       const activeExpenseCategories = categories.filter((c) => c.type === 'expense' && !c.isDeleted);
 
-      // Pre-warm health endpoint with credentials: 'include' to ensure auth cookies are active
-      try {
-        await fetch('/api/health', {
-          method: 'GET',
-          credentials: 'include',
-        });
-      } catch {
-        // Non-blocking ping
-      }
-
       setAnalyzingStep('Membaca teks nota & mendeteksi kasir...');
-      setTimeout(() => setAnalyzingStep('Mengekstrak total belanja & rincian barang...'), 1200);
+      setTimeout(() => setAnalyzingStep('Mengekstrak total belanja & rincian barang...'), 1000);
 
-      const sendScanRequest = async () => {
-        return await fetch('/api/scan-receipt', {
+      let parsed: any = null;
+
+      // Try server endpoint first
+      try {
+        const res = await fetch('/api/scan-receipt', {
           method: 'POST',
           credentials: 'include',
           headers: {
@@ -156,50 +255,23 @@ export const ScanReceiptModal: React.FC<ScanReceiptModalProps> = ({
             existingCategories: activeExpenseCategories.map((c) => ({ id: c.id, name: c.name })),
           }),
         });
-      };
 
-      let res = await sendScanRequest();
-
-      // If server responded with 405 or was redirected (common when nginx auth bridge needs cookie re-check on mobile)
-      if (res.status === 405 || res.redirected) {
-        setAnalyzingStep('Memperbarui sesi keamanan server...');
-        try {
-          await fetch('/api/health', { method: 'GET', credentials: 'include' });
-        } catch {}
-        await new Promise((resolve) => setTimeout(resolve, 350));
-        res = await sendScanRequest();
-      }
-
-      const responseText = await res.text();
-      let json: any = null;
-      try {
-        json = responseText ? JSON.parse(responseText) : null;
-      } catch {
-        // Non-JSON response
-      }
-
-      if (!res.ok || !json || !json.success) {
-        if (res.status === 405) {
-          setIsSessionError(true);
-          throw new Error('Sesi otentikasi browser di HP perlu disegarkan agar dapat memproses foto struk.');
-        }
-
-        if (json?.errorCode === 'MISSING_API_KEY') {
-          throw new Error('GEMINI_API_KEY belum dikonfigurasi di file .env server.');
-        }
-
-        let userMsg = json?.error;
-        if (!userMsg) {
-          if (res.status === 504 || res.status === 502) {
-            userMsg = 'Koneksi ke AI timeout karena sinyal lambat. Silakan coba foto ulang.';
-          } else {
-            userMsg = `Server merespons status ${res.status}. Silakan coba lagi beberapa saat.`;
+        if (res.ok) {
+          const responseText = await res.text();
+          const json = responseText ? JSON.parse(responseText) : null;
+          if (json && json.success && json.data) {
+            parsed = json.data;
           }
         }
-        throw new Error(userMsg);
+      } catch (serverErr) {
+        console.warn('[ScanReceiptModal] Server endpoint unreachable, using client fallback:', serverErr);
       }
 
-      const parsed = json.data;
+      // If server returned 405 (Nginx auth redirect on mobile) or failed, fall back to direct Gemini API REST call
+      if (!parsed) {
+        setAnalyzingStep('Memproses foto struk dengan Gemini AI...');
+        parsed = await callDirectGeminiApi(base64Image, activeExpenseCategories);
+      }
 
       // Find matching category id
       let matchedCategoryId: string | undefined;
