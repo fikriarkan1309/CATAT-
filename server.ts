@@ -33,10 +33,11 @@ async function startServer() {
   // Health check endpoint (used for session warmup and status verify)
   app.get('/api/health', (_req, res) => {
     res.setHeader('Content-Type', 'application/json');
+    const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || '';
     res.json({
       status: 'ok',
-      hasGeminiKey: Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.length > 5),
-      apiKey: process.env.GEMINI_API_KEY || '',
+      hasGeminiKey: Boolean(apiKey && apiKey.length > 5 && apiKey !== 'MY_GEMINI_API_KEY'),
+      apiKey: apiKey === 'MY_GEMINI_API_KEY' ? '' : apiKey,
     });
   });
 
@@ -52,12 +53,12 @@ async function startServer() {
         });
       }
 
-      const apiKey = process.env.GEMINI_API_KEY;
+      const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || '';
       if (!apiKey || apiKey === 'MY_GEMINI_API_KEY' || apiKey.trim().length === 0) {
         return res.status(400).json({
           success: false,
           errorCode: 'MISSING_API_KEY',
-          error: 'GEMINI_API_KEY belum dikonfigurasi di .env server.',
+          error: 'GEMINI_API_KEY belum dikonfigurasi pada server.',
         });
       }
 
