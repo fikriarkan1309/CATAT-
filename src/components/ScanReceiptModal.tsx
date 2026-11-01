@@ -44,6 +44,7 @@ export const ScanReceiptModal: React.FC<ScanReceiptModalProps> = ({
   const [analyzingStep, setAnalyzingStep] = useState<string>('');
   const [scannedResult, setScannedResult] = useState<ScannedReceiptData | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isSessionError, setIsSessionError] = useState<boolean>(false);
 
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
@@ -56,6 +57,7 @@ export const ScanReceiptModal: React.FC<ScanReceiptModalProps> = ({
     setAnalyzingStep('');
     setScannedResult(null);
     setErrorMessage(null);
+    setIsSessionError(false);
   };
 
   const handleClose = () => {
@@ -120,35 +122,68 @@ export const ScanReceiptModal: React.FC<ScanReceiptModalProps> = ({
   // Call Gemini API Backend
   const analyzeWithGemini = async (base64Image: string) => {
     setIsAnalyzing(true);
-    setAnalyzingStep('Mengirim foto struk ke Gemini AI...');
+    setIsSessionError(false);
+    setErrorMessage(null);
+    setAnalyzingStep('Menghubungkan ke Gemini AI...');
 
     try {
       const activeExpenseCategories = categories.filter((c) => c.type === 'expense' && !c.isDeleted);
 
-      setTimeout(() => setAnalyzingStep('Membaca teks nota & mendeteksi kasir...'), 600);
-      setTimeout(() => setAnalyzingStep('Mengekstrak total belanja & rincian barang...'), 1400);
+      // Pre-warm health endpoint with credentials: 'include' to ensure auth cookies are active
+      try {
+        await fetch('/api/health', {
+          method: 'GET',
+          credentials: 'include',
+        });
+      } catch {
+        // Non-blocking ping
+      }
 
-      const res = await fetch('/api/scan-receipt', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          imageBase64: base64Image,
-          mimeType: 'image/jpeg',
-          existingCategories: activeExpenseCategories.map((c) => ({ id: c.id, name: c.name })),
-        }),
-      });
+      setAnalyzingStep('Membaca teks nota & mendeteksi kasir...');
+      setTimeout(() => setAnalyzingStep('Mengekstrak total belanja & rincian barang...'), 1200);
+
+      const sendScanRequest = async () => {
+        return await fetch('/api/scan-receipt', {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          body: JSON.stringify({
+            imageBase64: base64Image,
+            mimeType: 'image/jpeg',
+            existingCategories: activeExpenseCategories.map((c) => ({ id: c.id, name: c.name })),
+          }),
+        });
+      };
+
+      let res = await sendScanRequest();
+
+      // If server responded with 405 or was redirected (common when nginx auth bridge needs cookie re-check on mobile)
+      if (res.status === 405 || res.redirected) {
+        setAnalyzingStep('Memperbarui sesi keamanan server...');
+        try {
+          await fetch('/api/health', { method: 'GET', credentials: 'include' });
+        } catch {}
+        await new Promise((resolve) => setTimeout(resolve, 350));
+        res = await sendScanRequest();
+      }
 
       const responseText = await res.text();
       let json: any = null;
       try {
         json = responseText ? JSON.parse(responseText) : null;
       } catch {
-        // Non-JSON response (e.g. gateway timeout or proxy error)
+        // Non-JSON response
       }
 
       if (!res.ok || !json || !json.success) {
+        if (res.status === 405) {
+          setIsSessionError(true);
+          throw new Error('Sesi otentikasi browser di HP perlu disegarkan agar dapat memproses foto struk.');
+        }
+
         if (json?.errorCode === 'MISSING_API_KEY') {
           throw new Error('GEMINI_API_KEY belum dikonfigurasi di file .env server.');
         }
@@ -368,29 +403,53 @@ export const ScanReceiptModal: React.FC<ScanReceiptModalProps> = ({
 
           {/* State 3: Error */}
           {errorMessage && (
-            <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 space-y-2">
+            <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 space-y-2.5">
               <div className="flex items-start gap-2.5 text-rose-700 dark:text-rose-300">
                 <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
                 <div>
-                  <h5 className="text-xs font-bold">Gagal Memproses Struk</h5>
+                  <h5 className="text-xs font-bold">
+                    {isSessionError ? 'Sesi Browser Perlu Disegarkan' : 'Gagal Memproses Struk'}
+                  </h5>
                   <p className="text-xs mt-0.5 leading-relaxed">{errorMessage}</p>
                 </div>
               </div>
-              <div className="pt-2 flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => cameraInputRef.current?.click()}
-                  className="flex-1 py-2 text-xs font-semibold bg-rose-600 text-white rounded-xl hover:bg-rose-700 transition-colors"
-                >
-                  Foto Ulang
-                </button>
-                <button
-                  type="button"
-                  onClick={resetState}
-                  className="px-3 py-2 text-xs font-semibold bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-xl border border-slate-200 dark:border-slate-700"
-                >
-                  Kembali
-                </button>
+              <div className="pt-1 flex gap-2">
+                {isSessionError ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => window.location.reload()}
+                      className="flex-1 py-2 text-xs font-semibold bg-sky-600 hover:bg-sky-700 text-white rounded-xl transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>Segarkan Halaman</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={resetState}
+                      className="px-3 py-2 text-xs font-semibold bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-xl border border-slate-200 dark:border-slate-700 cursor-pointer"
+                    >
+                      Kembali
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => cameraInputRef.current?.click()}
+                      className="flex-1 py-2 text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white rounded-xl transition-colors cursor-pointer"
+                    >
+                      Foto Ulang
+                    </button>
+                    <button
+                      type="button"
+                      onClick={resetState}
+                      className="px-3 py-2 text-xs font-semibold bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-xl border border-slate-200 dark:border-slate-700 cursor-pointer"
+                    >
+                      Kembali
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           )}

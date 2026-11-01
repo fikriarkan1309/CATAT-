@@ -12,12 +12,25 @@ const __dirname = path.dirname(__filename);
 
 async function startServer() {
   const app = express();
-  const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+  // Port 3000 is required by the environment reverse proxy
+  const PORT = 3000;
+
+  // CORS and credentials middleware to allow cross-origin and mobile cookie persistence
+  app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+    if (req.method === 'OPTIONS') {
+      return res.sendStatus(204);
+    }
+    next();
+  });
 
   // Support base64 image uploads up to 25MB
   app.use(express.json({ limit: '25mb' }));
 
-  // Health check
+  // Health check endpoint (used for session warmup and status verify)
   app.get('/api/health', (_req, res) => {
     res.json({
       status: 'ok',
@@ -160,6 +173,11 @@ Wajib menghasilkan format JSON murni.`;
         error: userFriendlyError,
       });
     }
+  });
+
+  // Catch unhandled API routes so they return JSON instead of HTML fallback
+  app.all('/api/*', (_req, res) => {
+    res.status(404).json({ success: false, error: 'Endpoint API tidak ditemukan.' });
   });
 
   // Mount Vite middleware in development mode
