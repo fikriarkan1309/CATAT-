@@ -132,8 +132,7 @@ Wajib menghasilkan format JSON murni.`;
     const vite = await createViteServer({
       server: {
         middlewareMode: true,
-        hmr: process.env.DISABLE_HMR !== 'true',
-        watch: process.env.DISABLE_HMR === 'true' ? null : {},
+        hmr: false,
       },
       appType: 'spa',
     });
