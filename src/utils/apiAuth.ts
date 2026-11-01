@@ -1,4 +1,4 @@
-// Helper to capture and persist AI Studio auth parameters for Nginx preview proxy on mobile devices
+// Helper to capture and persist AI Studio auth parameters and supply Gemini API key
 
 const STORAGE_KEY = 'aistudio_auth_params';
 
@@ -60,18 +60,31 @@ export function buildApiUrl(endpointPath: string): string {
   }
 }
 
+declare const __GEMINI_API_KEY__: string | undefined;
+
 let cachedApiKey = '';
 
 export function getGeminiApiKey(): string {
-  // Direct literal references for Vite static define replacement
-  const viteKey = import.meta.env.VITE_GEMINI_API_KEY;
-  if (typeof viteKey === 'string' && viteKey.length > 5) {
-    return viteKey;
-  }
-  const procKey = process.env.GEMINI_API_KEY;
-  if (typeof procKey === 'string' && procKey.length > 5) {
-    return procKey;
-  }
+  try {
+    if (typeof __GEMINI_API_KEY__ !== 'undefined' && __GEMINI_API_KEY__ && __GEMINI_API_KEY__.length > 5) {
+      return __GEMINI_API_KEY__;
+    }
+  } catch {}
+
+  try {
+    const viteKey = import.meta.env.VITE_GEMINI_API_KEY;
+    if (typeof viteKey === 'string' && viteKey.length > 5) {
+      return viteKey;
+    }
+  } catch {}
+
+  try {
+    const procKey = process.env.GEMINI_API_KEY;
+    if (typeof procKey === 'string' && procKey.length > 5) {
+      return procKey;
+    }
+  } catch {}
+
   return cachedApiKey;
 }
 
