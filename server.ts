@@ -33,11 +33,10 @@ async function startServer() {
   // Health check endpoint (used for session warmup and status verify)
   app.get('/api/health', (_req, res) => {
     res.setHeader('Content-Type', 'application/json');
-    const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || '';
     res.json({
       status: 'ok',
-      hasGeminiKey: Boolean(apiKey && apiKey.length > 5 && apiKey !== 'MY_GEMINI_API_KEY'),
-      apiKey: apiKey === 'MY_GEMINI_API_KEY' ? '' : apiKey,
+      hasGeminiKey: Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.length > 5),
+      apiKey: process.env.GEMINI_API_KEY || '',
     });
   });
 
@@ -53,16 +52,16 @@ async function startServer() {
         });
       }
 
-      const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || '';
+      const apiKey = process.env.GEMINI_API_KEY;
       if (!apiKey || apiKey === 'MY_GEMINI_API_KEY' || apiKey.trim().length === 0) {
         return res.status(400).json({
           success: false,
           errorCode: 'MISSING_API_KEY',
-          error: 'GEMINI_API_KEY belum dikonfigurasi pada server.',
+          error: 'GEMINI_API_KEY belum dikonfigurasi di .env server.',
         });
       }
 
-      // Initialize official GoogleGenAI SDK
+      // Initialize official GoogleGenAI SDK with recommended User-Agent
       const ai = new GoogleGenAI({
         apiKey,
         httpOptions: {
@@ -93,12 +92,10 @@ Ekstrak informasi berikut:
 
 Wajib menghasilkan format JSON murni.`;
 
+      // Use gemini-3.1-flash-lite for instant 2-second multimodal OCR (zero thinking overhead), fallback to gemini-3.8-flash
       const modelsToTry = [
         process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite',
         'gemini-3.8-flash',
-        'gemini-2.5-flash',
-        'gemini-2.0-flash',
-        'gemini-1.5-flash',
       ];
 
       let responseText = '';
@@ -132,47 +129,8 @@ Wajib menghasilkan format JSON murni.`;
             break;
           }
         } catch (modelErr: any) {
-          console.warn(`[Gemini API] Model ${modelName} encountered SDK error, trying direct REST call:`, modelErr?.message || modelErr);
+          console.warn(`[Gemini API] Model ${modelName} encountered error, trying next:`, modelErr?.message || modelErr);
           lastError = modelErr;
-
-          // Direct REST API fallback with x-goog-api-key header
-          try {
-            const restUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${encodeURIComponent(apiKey)}`;
-
-            const restRes = await fetch(restUrl, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'User-Agent': 'aistudio-build',
-                'x-goog-api-key': apiKey,
-              },
-              body: JSON.stringify({
-                contents: [
-                  {
-                    parts: [
-                      { inlineData: { mimeType: mimeType || 'image/jpeg', data: cleanBase64 } },
-                      { text: 'Silakan baca struk belanja ini dan ekstrak datanya dalam format JSON sesuai instruksi.' },
-                    ],
-                  },
-                ],
-                systemInstruction: { parts: [{ text: systemPrompt }] },
-                generationConfig: { responseMimeType: 'application/json' },
-              }),
-            });
-
-            const restData = await restRes.json();
-            if (restRes.ok) {
-              const text = restData?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-              if (text && text !== '{}') {
-                responseText = text;
-                break;
-              }
-            } else {
-              console.warn(`[Gemini REST API] ${modelName} error status ${restRes.status}:`, restData);
-            }
-          } catch (restErr: any) {
-            console.warn(`[Gemini REST API] ${modelName} exception:`, restErr?.message || restErr);
-          }
         }
       }
 
