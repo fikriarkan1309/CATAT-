@@ -15,7 +15,6 @@ import {
   Tag,
 } from 'lucide-react';
 import { Category } from '../types/finance';
-import { buildApiUrl, fetchGeminiApiKey } from '../utils/apiAuth';
 
 export interface ScannedReceiptData {
   merchant: string;
@@ -45,7 +44,6 @@ export const ScanReceiptModal: React.FC<ScanReceiptModalProps> = ({
   const [analyzingStep, setAnalyzingStep] = useState<string>('');
   const [scannedResult, setScannedResult] = useState<ScannedReceiptData | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [isSessionError, setIsSessionError] = useState<boolean>(false);
 
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
@@ -58,7 +56,6 @@ export const ScanReceiptModal: React.FC<ScanReceiptModalProps> = ({
     setAnalyzingStep('');
     setScannedResult(null);
     setErrorMessage(null);
-    setIsSessionError(false);
   };
 
   const handleClose = () => {
@@ -66,7 +63,7 @@ export const ScanReceiptModal: React.FC<ScanReceiptModalProps> = ({
     onClose();
   };
 
-  // Compress image to fast base64 (max 1200px width/height for fast mobile upload)
+  // Compress image to fast base64 (max 1000px width/height for fast & reliable processing)
   const processImageFile = (file: File) => {
     setErrorMessage(null);
     setScannedResult(null);
@@ -81,7 +78,7 @@ export const ScanReceiptModal: React.FC<ScanReceiptModalProps> = ({
         const canvas = document.createElement('canvas');
         let width = img.width;
         let height = img.height;
-        const maxDimension = 1200;
+        const maxDimension = 1000;
 
         if (width > maxDimension || height > maxDimension) {
           if (width > height) {
@@ -98,15 +95,21 @@ export const ScanReceiptModal: React.FC<ScanReceiptModalProps> = ({
         const ctx = canvas.getContext('2d');
         if (ctx) {
           ctx.drawImage(img, 0, 0, width, height);
-          const compressedBase64 = canvas.toDataURL('image/jpeg', 0.72);
+          const compressedBase64 = canvas.toDataURL('image/jpeg', 0.75);
           setSelectedImage(compressedBase64);
-          analyzeWithGemini(compressedBase64);
+          analyzeWithGemini(compressedBase64, 'image/jpeg');
         } else {
           setSelectedImage(dataUrl);
-          analyzeWithGemini(dataUrl);
+          analyzeWithGemini(dataUrl, file.type || 'image/jpeg');
         }
       };
+      img.onerror = () => {
+        setErrorMessage('Gagal membaca file gambar. Pastikan format foto didukung (JPG/PNG/WEBP).');
+      };
       img.src = dataUrl;
+    };
+    reader.onerror = () => {
+      setErrorMessage('Gagal membuka file foto dari perangkat.');
     };
     reader.readAsDataURL(file);
   };
@@ -116,167 +119,43 @@ export const ScanReceiptModal: React.FC<ScanReceiptModalProps> = ({
     if (file) {
       processImageFile(file);
     }
-    // Reset file input value so same file can be re-selected if needed
     e.target.value = '';
   };
 
-  // Direct client-side Gemini fallback for mobile browsers where third-party auth cookies are blocked by Nginx preview proxy
-  const callDirectGeminiApi = async (base64Image: string, activeExpenseCategories: Category[]) => {
-    const apiKey = await fetchGeminiApiKey();
-    if (!apiKey) {
-      throw new Error('Kunci API Gemini tidak ditemukan pada server.');
-    }
-
-    const cleanBase64 = base64Image.replace(/^data:image\/\w+;base64,/, '');
-    const categoryNames = activeExpenseCategories.map((c) => c.name).join(', ');
-
-    const systemPrompt = `Kamu adalah asisten keuangan pintar untuk aplikasi Catatin! Tugasmu adalah menganalisis foto struk / nota belanja dan mengekstrak informasinya menjadi format JSON yang sangat akurat.
-
-Berikut daftar kategori yang tersedia di aplikasi pengguna:
-[${categoryNames || 'Makanan & Minuman, Kebutuhan Pokok & Dapur, Transportasi, Kesehatan & Perawatan, Hiburan & Rekreasi, Tagihan & Utilitas, Belanja Lain-lain'}]
-
-Ekstrak informasi berikut:
-1. "merchant": Nama toko / tempat belanja / vendor (contoh: "Indomaret", "Superindo", "SPBU Pertamina", "Apotek K-24"). Jika tidak jelas, gunakan nama umum seperti "Minimarket / Toko".
-2. "totalAmount": Total nominal belanja akhir yang harus dibayar (angka integer rupiah, setelah diskon dan pajak).
-3. "transactionDate": Tanggal dan jam transaksi yang tertera pada struk dalam format ISO (YYYY-MM-DDTHH:mm:ss). Jika jam tidak ada, gunakan jam saat ini. Jika tanggal tidak ada atau buram, gunakan tanggal hari ini.
-4. "categoryName": Pilih satu nama kategori yang paling cocok dari daftar kategori yang disediakan di atas.
-5. "items": Daftar barang yang dibeli (array of object: { name: string, qty?: number, price?: number }).
-6. "summaryNotes": Ringkasan pendek barang-barang utama yang dibeli (contoh: "Minyak 2L, Beras 5kg, Telur 1kg").
-7. "confidence": Tingkat keyakinan bacaan (angka 0.0 sampai 1.0).
-
-Wajib menghasilkan format JSON murni.`;
-
-    const modelsToTry = [
-      'gemini-2.5-flash',
-      'gemini-2.0-flash',
-      'gemini-1.5-flash',
-      'gemini-3.1-flash-lite',
-      'gemini-3.8-flash',
-    ];
-
-    let jsonResultText = '';
-    let lastErr: any = null;
-
-    for (const model of modelsToTry) {
-      try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-        const response = await fetch(url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  {
-                    inlineData: {
-                      mimeType: 'image/jpeg',
-                      data: cleanBase64,
-                    },
-                  },
-                  {
-                    text: 'Silakan baca struk belanja ini dan ekstrak datanya dalam format JSON sesuai instruksi.',
-                  },
-                ],
-              },
-            ],
-            systemInstruction: {
-              parts: [{ text: systemPrompt }],
-            },
-            generationConfig: {
-              responseMimeType: 'application/json',
-            },
-          }),
-        });
-
-        const data = await response.json();
-        if (!response.ok) {
-          throw new Error(data?.error?.message || `Gemini API error status ${response.status}`);
-        }
-
-        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (text) {
-          jsonResultText = text;
-          break;
-        }
-      } catch (e: any) {
-        console.warn(`[Client Gemini Direct] Error model ${model}:`, e);
-        lastErr = e;
-      }
-    }
-
-    if (!jsonResultText) {
-      throw lastErr || new Error('Tidak dapat mengekstrak teks dari struk belanja.');
-    }
-
-    let parsedData: any = {};
-    try {
-      parsedData = JSON.parse(jsonResultText);
-    } catch {
-      const cleaned = jsonResultText.replace(/```json/g, '').replace(/```/g, '').trim();
-      parsedData = JSON.parse(cleaned);
-    }
-
-    return {
-      merchant: parsedData.merchant || 'Struk Belanja',
-      totalAmount: Number(parsedData.totalAmount) || 0,
-      transactionDate: parsedData.transactionDate || new Date().toISOString(),
-      categoryName: parsedData.categoryName || '',
-      items: parsedData.items || [],
-      summaryNotes: parsedData.summaryNotes || parsedData.merchant || '',
-      confidence: parsedData.confidence || 0.9,
-    };
-  };
-
-  // Call Gemini API Backend with seamless fallback for mobile devices
-  const analyzeWithGemini = async (base64Image: string) => {
+  // Call Gemini API Backend
+  const analyzeWithGemini = async (base64Image: string, imageMimeType: string = 'image/jpeg') => {
     setIsAnalyzing(true);
-    setIsSessionError(false);
     setErrorMessage(null);
-    setAnalyzingStep('Menghubungkan ke Gemini AI...');
+    setAnalyzingStep('Mengompres foto & menghubungkan ke Gemini AI...');
 
     try {
       const activeExpenseCategories = categories.filter((c) => c.type === 'expense' && !c.isDeleted);
 
-      setAnalyzingStep('Membaca teks nota & mendeteksi kasir...');
-      setTimeout(() => setAnalyzingStep('Mengekstrak total belanja & rincian barang...'), 1000);
+      setTimeout(() => setAnalyzingStep('Membaca teks nota & mengekstrak nominal...'), 600);
+      setTimeout(() => setAnalyzingStep('Menyiapkan rincian belanja & kategori...'), 1400);
 
-      let parsed: any = null;
+      const res = await fetch('/api/scan-receipt', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          imageBase64: base64Image,
+          mimeType: imageMimeType,
+          existingCategories: activeExpenseCategories.map((c) => ({ id: c.id, name: c.name })),
+        }),
+      });
 
-      // Try server endpoint first (with buildApiUrl to preserve Nginx auth params on mobile)
-      try {
-        const targetUrl = buildApiUrl('/api/scan-receipt');
-        const res = await fetch(targetUrl, {
-          method: 'POST',
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-          },
-          body: JSON.stringify({
-            imageBase64: base64Image,
-            mimeType: 'image/jpeg',
-            existingCategories: activeExpenseCategories.map((c) => ({ id: c.id, name: c.name })),
-          }),
-        });
+      const json = await res.json();
 
-        if (res.ok) {
-          const responseText = await res.text();
-          const json = responseText ? JSON.parse(responseText) : null;
-          if (json && json.success && json.data) {
-            parsed = json.data;
-          }
+      if (!res.ok || !json.success) {
+        if (json.errorCode === 'MISSING_API_KEY') {
+          throw new Error('GEMINI_API_KEY belum dikonfigurasi di file .env server.');
         }
-      } catch (serverErr) {
-        console.warn('[ScanReceiptModal] Server endpoint unreachable, using client fallback:', serverErr);
+        throw new Error(json.error || 'Gagal menganalisis struk belanja.');
       }
 
-      // If server returned 405 (Nginx auth redirect on mobile) or failed, fall back to direct Gemini API REST call
-      if (!parsed) {
-        setAnalyzingStep('Memproses foto struk dengan Gemini AI...');
-        parsed = await callDirectGeminiApi(base64Image, activeExpenseCategories);
-      }
+      const parsed = json.data;
 
       // Find matching category id
       let matchedCategoryId: string | undefined;
@@ -480,54 +359,48 @@ Wajib menghasilkan format JSON murni.`;
 
           {/* State 3: Error */}
           {errorMessage && (
-            <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 space-y-2.5">
+            <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 space-y-3">
               <div className="flex items-start gap-2.5 text-rose-700 dark:text-rose-300">
-                <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+                <AlertCircle className="w-5 h-5 shrink-0 mt-0.5 text-rose-500" />
                 <div>
-                  <h5 className="text-xs font-bold">
-                    {isSessionError ? 'Sesi Browser Perlu Disegarkan' : 'Gagal Memproses Struk'}
-                  </h5>
+                  <h5 className="text-xs font-bold">Gagal Memproses Struk</h5>
                   <p className="text-xs mt-0.5 leading-relaxed">{errorMessage}</p>
                 </div>
               </div>
-              <div className="pt-1 flex gap-2">
-                {isSessionError ? (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => window.location.reload()}
-                      className="flex-1 py-2 text-xs font-semibold bg-sky-600 hover:bg-sky-700 text-white rounded-xl transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
-                    >
-                      <RefreshCw className="w-3.5 h-3.5" />
-                      <span>Segarkan Halaman</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={resetState}
-                      className="px-3 py-2 text-xs font-semibold bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-xl border border-slate-200 dark:border-slate-700 cursor-pointer"
-                    >
-                      Kembali
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => cameraInputRef.current?.click()}
-                      className="flex-1 py-2 text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white rounded-xl transition-colors cursor-pointer"
-                    >
-                      Foto Ulang
-                    </button>
-                    <button
-                      type="button"
-                      onClick={resetState}
-                      className="px-3 py-2 text-xs font-semibold bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-xl border border-slate-200 dark:border-slate-700 cursor-pointer"
-                    >
-                      Kembali
-                    </button>
-                  </>
+              <div className="pt-1 grid grid-cols-2 gap-2">
+                {selectedImage && selectedImage !== 'demo' && (
+                  <button
+                    type="button"
+                    onClick={() => analyzeWithGemini(selectedImage)}
+                    className="py-2 px-3 text-xs font-bold bg-rose-600 text-white rounded-xl hover:bg-rose-700 transition-colors flex items-center justify-center gap-1.5 shadow-xs"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>Coba Lagi AI</span>
+                  </button>
                 )}
+                <button
+                  type="button"
+                  onClick={() => cameraInputRef.current?.click()}
+                  className="py-2 px-3 text-xs font-semibold bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  Foto Ulang
+                </button>
               </div>
+              <button
+                type="button"
+                onClick={() => {
+                  onApplyReceipt({
+                    merchant: 'Struk Belanja',
+                    totalAmount: 0,
+                    transactionDate: new Date().toISOString(),
+                    summaryNotes: 'Struk Belanja',
+                  });
+                  handleClose();
+                }}
+                className="w-full py-2 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 underline text-center block"
+              >
+                Atau Lanjut Isi Form Manual →
+              </button>
             </div>
           )}
 
@@ -615,7 +488,7 @@ Wajib menghasilkan format JSON murni.`;
         {/* Footer info */}
         <div className="pt-3 border-t border-slate-100 dark:border-slate-800 text-center">
           <p className="text-[10px] text-slate-400">
-            Powered by Google Gemini 3.8 Flash Free Tier
+            Powered by Google Gemini 3.8 Flash
           </p>
         </div>
 

@@ -12,31 +12,16 @@ const __dirname = path.dirname(__filename);
 
 async function startServer() {
   const app = express();
-  // Port 3000 is required by the environment reverse proxy
-  const PORT = 3000;
-
-  // CORS and credentials middleware to allow cross-origin and mobile cookie persistence
-  app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
-    res.header('Access-Control-Allow-Credentials', 'true');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
-    if (req.method === 'OPTIONS') {
-      return res.sendStatus(204);
-    }
-    next();
-  });
+  const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
   // Support base64 image uploads up to 25MB
   app.use(express.json({ limit: '25mb' }));
 
-  // Health check endpoint (used for session warmup and status verify)
+  // Health check
   app.get('/api/health', (_req, res) => {
-    res.setHeader('Content-Type', 'application/json');
     res.json({
       status: 'ok',
       hasGeminiKey: Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.length > 5),
-      apiKey: process.env.GEMINI_API_KEY || '',
     });
   });
 
@@ -61,7 +46,7 @@ async function startServer() {
         });
       }
 
-      // Initialize official GoogleGenAI SDK with recommended User-Agent
+      // Initialize official GoogleGenAI SDK
       const ai = new GoogleGenAI({
         apiKey,
         httpOptions: {
@@ -71,8 +56,13 @@ async function startServer() {
         },
       });
 
-      // Clean base64 string if it contains data URI prefix
-      const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, '');
+      // Extract MIME type and clean base64 string
+      let detectedMime = mimeType || 'image/jpeg';
+      const mimeMatch = imageBase64.match(/^data:(image\/[a-zA-Z0-9.+]+);base64,/);
+      if (mimeMatch && mimeMatch[1]) {
+        detectedMime = mimeMatch[1];
+      }
+      const cleanBase64 = imageBase64.replace(/^data:[^;]+;base64,/, '').replace(/\s/g, '');
 
       const categoryNames = existingCategories.map((c: any) => c.name).join(', ');
 
@@ -92,52 +82,64 @@ Ekstrak informasi berikut:
 
 Wajib menghasilkan format JSON murni.`;
 
-      // Use gemini-3.1-flash-lite for instant 2-second multimodal OCR (zero thinking overhead), fallback to gemini-3.8-flash
-      const modelsToTry = [
-        process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite',
-        'gemini-3.8-flash',
-      ];
-
-      let responseText = '';
+      // Attempt scanning with automatic retry and model fallbacks for 503 high demand resilience
+      const modelsToTry = ['gemini-3.8-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest'];
+      let response: any = null;
       let lastError: any = null;
 
       for (const modelName of modelsToTry) {
-        try {
-          const is38 = modelName.includes('3.8');
-          const response = await ai.models.generateContent({
-            model: modelName,
-            contents: [
-              {
-                inlineData: {
-                  mimeType: mimeType || 'image/jpeg',
-                  data: cleanBase64,
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          try {
+            response = await ai.models.generateContent({
+              model: modelName,
+              contents: [
+                {
+                  inlineData: {
+                    mimeType: detectedMime,
+                    data: cleanBase64,
+                  },
                 },
+                {
+                  text: 'Silakan baca struk belanja ini dan ekstrak datanya dalam format JSON sesuai instruksi.',
+                },
+              ],
+              config: {
+                systemInstruction: systemPrompt,
+                responseMimeType: 'application/json',
               },
-              {
-                text: 'Silakan baca struk belanja ini dan ekstrak datanya dalam format JSON sesuai instruksi.',
-              },
-            ],
-            config: {
-              systemInstruction: systemPrompt,
-              responseMimeType: 'application/json',
-              ...(is38 ? { thinkingConfig: { thinkingLevel: 'LOW' as any } } : {}),
-            },
-          });
+            });
 
-          responseText = response.text?.trim() || '';
-          if (responseText && responseText !== '{}') {
-            break;
+            if (response && response.text) {
+              lastError = null;
+              break;
+            }
+          } catch (err: any) {
+            lastError = err;
+            console.warn(`[Gemini API] Model ${modelName} attempt ${attempt} failed:`, err?.message || err);
+            const errStr = String(err?.message || err);
+            if (
+              errStr.includes('503') ||
+              errStr.includes('429') ||
+              errStr.includes('500') ||
+              errStr.includes('504') ||
+              errStr.includes('high demand')
+            ) {
+              await new Promise((resolve) => setTimeout(resolve, 800 * attempt));
+            } else {
+              break;
+            }
           }
-        } catch (modelErr: any) {
-          console.warn(`[Gemini API] Model ${modelName} encountered error, trying next:`, modelErr?.message || modelErr);
-          lastError = modelErr;
+        }
+        if (response && response.text) {
+          break;
         }
       }
 
-      if (!responseText || responseText === '{}') {
-        throw lastError || new Error('Tidak dapat mengekstrak teks dari struk belanja.');
+      if (!response || !response.text) {
+        throw lastError || new Error('Gagal memproses gambar dengan Gemini AI.');
       }
 
+      const responseText = response.text.trim();
       let parsedData: any = {};
       try {
         parsedData = JSON.parse(responseText);
@@ -161,25 +163,22 @@ Wajib menghasilkan format JSON murni.`;
       });
     } catch (err: any) {
       console.error('[Gemini API] Error scanning receipt:', err);
-      let userFriendlyError = err?.message || 'Terjadi kesalahan saat memproses gambar dengan Gemini AI.';
-      if (typeof userFriendlyError === 'string' && userFriendlyError.includes('"message":')) {
-        try {
-          const parsed = JSON.parse(userFriendlyError);
-          if (parsed?.error?.message) {
-            userFriendlyError = parsed.error.message;
-          }
-        } catch {}
+      const errMsg = String(err?.message || err);
+      let userFriendlyError = errMsg;
+
+      if (errMsg.includes('503') || errMsg.includes('high demand')) {
+        userFriendlyError = 'Layanan Gemini AI sedang mengalami lonjakan trafik tinggi (503 High Demand). Sistem telah mencoba ulang. Silakan coba klik foto lagi atau periksa API Key Anda di panel Settings > Secrets.';
+      } else if (errMsg.includes('403') || errMsg.includes('PERMISSION_DENIED') || errMsg.includes('API_KEY_INVALID')) {
+        userFriendlyError = 'API Key Gemini tidak valid atau belum diizinkan. Silakan periksa API Key Anda di panel Settings > Secrets.';
+      } else if (errMsg.includes('429') || errMsg.includes('RESOURCE_EXHAUSTED')) {
+        userFriendlyError = 'Batas penggunaan (Rate Limit) Gemini tercapai. Silakan pilih atau perbarui API Key Anda di panel Settings > Secrets.';
       }
+
       return res.status(500).json({
         success: false,
         error: userFriendlyError,
       });
     }
-  });
-
-  // Catch unhandled API routes so they return JSON instead of HTML fallback
-  app.all('/api/*', (_req, res) => {
-    res.status(404).json({ success: false, error: 'Endpoint API tidak ditemukan.' });
   });
 
   // Mount Vite middleware in development mode
@@ -188,7 +187,8 @@ Wajib menghasilkan format JSON murni.`;
     const vite = await createViteServer({
       server: {
         middlewareMode: true,
-        hmr: false,
+        hmr: process.env.DISABLE_HMR !== 'true',
+        watch: process.env.DISABLE_HMR === 'true' ? null : {},
       },
       appType: 'spa',
     });
