@@ -32,6 +32,7 @@ async function startServer() {
 
   // Health check endpoint (used for session warmup and status verify)
   app.get('/api/health', (_req, res) => {
+    res.setHeader('Content-Type', 'application/json');
     res.json({
       status: 'ok',
       hasGeminiKey: Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.length > 5),

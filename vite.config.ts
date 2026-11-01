@@ -15,9 +15,11 @@ export default defineConfig(() => {
   const geminiApiKey = process.env.GEMINI_API_KEY || '';
   return {
     plugins: [react(), tailwindcss()],
+    envPrefix: ['VITE_', 'GEMINI_'],
     define: {
       'process.env.GEMINI_API_KEY': JSON.stringify(geminiApiKey),
       'import.meta.env.VITE_GEMINI_API_KEY': JSON.stringify(geminiApiKey),
+      'import.meta.env.GEMINI_API_KEY': JSON.stringify(geminiApiKey),
       '__GEMINI_API_KEY__': JSON.stringify(geminiApiKey),
     },
     resolve: {
